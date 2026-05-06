@@ -68,11 +68,11 @@
 
 ### T1-1 类型定义
 
-- [ ] 新增 `types/book.ts`
-- [ ] 新增 `types/page.ts`
-- [ ] 新增 `types/config.ts`
-- [ ] 新增 `types/settings.ts`
-- [ ] 抽出状态枚举或联合类型
+- [x] 新增 `types/book.ts`
+- [x] 新增 `types/page.ts`
+- [x] 新增 `types/config.ts`
+- [x] 新增 `types/settings.ts`
+- [x] 抽出状态枚举或联合类型
 
 验收标准：
 
@@ -81,12 +81,12 @@
 
 ### T1-2 数据库基础设施
 
-- [ ] 新增 `lib/db/index.ts`
-- [ ] 新增 `lib/db/schema.ts`
-- [ ] 定义 `books` 表
-- [ ] 定义 `pages` 表
-- [ ] 定义 `model_configs` 表
-- [ ] 定义 `app_settings` 表
+- [x] 新增 `lib/db/index.ts`
+- [x] 新增 `lib/db/schema.ts`
+- [x] 定义 `books` 表
+- [x] 定义 `pages` 表
+- [x] 定义 `model_configs` 表
+- [x] 定义 `app_settings` 表
 
 验收标准：
 
@@ -95,11 +95,11 @@
 
 ### T1-3 数据访问封装
 
-- [ ] 新增 `lib/db/books.ts`
-- [ ] 新增 `lib/db/pages.ts`
-- [ ] 新增 `lib/db/modelConfigs.ts`
-- [ ] 新增 `lib/db/settings.ts`
-- [ ] 封装新增、查询、更新、删除接口
+- [x] 新增 `lib/db/books.ts`
+- [x] 新增 `lib/db/pages.ts`
+- [x] 新增 `lib/db/modelConfigs.ts`
+- [x] 新增 `lib/db/settings.ts`
+- [x] 封装新增、查询、更新、删除接口
 
 验收标准：
 
@@ -108,10 +108,10 @@
 
 ### T1-4 文件存储封装
 
-- [ ] 新增 `lib/storage/paths.ts`
-- [ ] 新增 `lib/storage/files.ts`
-- [ ] 约定绘本图片和音频目录结构
-- [ ] 封装复制图片、写入音频、删除目录能力
+- [x] 新增 `lib/storage/paths.ts`
+- [x] 新增 `lib/storage/files.ts`
+- [x] 约定绘本图片和音频目录结构
+- [x] 封装复制图片、写入音频、删除目录能力
 
 验收标准：
 
