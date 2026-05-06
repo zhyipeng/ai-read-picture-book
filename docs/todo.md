@@ -39,11 +39,11 @@
 
 ### T0-1 路由页面补齐
 
-- [ ] 新增 `app/books/new.tsx`
-- [ ] 新增 `app/books/[bookId]/index.tsx`
-- [ ] 新增 `app/books/[bookId]/page/[pageId].tsx`
-- [ ] 新增 `app/settings/index.tsx`
-- [ ] 配置基础 `Stack` 标题
+- [x] 新增 `app/books/new.tsx`
+- [x] 新增 `app/books/[bookId]/index.tsx`
+- [x] 新增 `app/books/[bookId]/page/[pageId].tsx`
+- [x] 新增 `app/settings/index.tsx`
+- [x] 配置基础 `Stack` 标题
 
 验收标准：
 
@@ -52,10 +52,10 @@
 
 ### T0-2 首页替换占位内容
 
-- [ ] 将 `app/index.tsx` 从 Expo 默认页替换为绘本列表页骨架
-- [ ] 增加“新建绘本”入口
-- [ ] 增加“设置”入口
-- [ ] 预留空列表状态
+- [x] 将 `app/index.tsx` 从 Expo 默认页替换为绘本列表页骨架
+- [x] 增加“新建绘本”入口
+- [x] 增加“设置”入口
+- [x] 预留空列表状态
 
 验收标准：
 
