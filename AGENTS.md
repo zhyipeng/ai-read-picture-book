@@ -4,6 +4,7 @@
 本仓库是一个精简的 Expo Router 项目。业务代码位于 `app/`，当前入口为 `app/_layout.tsx` 和 `app/index.tsx`。静态资源放在 `assets/images/`。产品和方案说明集中在 `docs/`，现有草稿见 `docs/v1.md`。`app-example/` 是 Expo 初始化模板的备份目录，已被 `.gitignore` 忽略，通常不作为正式开发区域。
 
 ## Build, Test, and Development Commands
+优先使用 webstorm 相关 mcp，忽略 pycharm/goland 相关 mcp。
 优先使用 `pnpm`，因为仓库包含 `pnpm-lock.yaml` 和 `pnpm-workspace.yaml`。
 
 - `pnpm install`：安装依赖。
