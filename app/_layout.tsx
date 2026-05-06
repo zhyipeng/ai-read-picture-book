@@ -1,6 +1,15 @@
+import { useEffect } from "react";
 import { Stack } from "expo-router";
 
+import { initDatabase } from "@/lib/db";
+
 export default function RootLayout() {
+  useEffect(() => {
+    void initDatabase().catch((error) => {
+      console.error("Failed to initialize database", error);
+    });
+  }, []);
+
   return (
     <Stack>
       <Stack.Screen name="index" options={{ headerShown: false }} />
