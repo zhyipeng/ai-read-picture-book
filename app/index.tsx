@@ -16,6 +16,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { ActionButton } from "@/components/ActionButton";
+import { Dialog } from "@/components/Dialog";
 import { deleteBook, listBooks } from "@/lib/db/books";
 import {
   deleteBookDirectory,
@@ -294,6 +295,9 @@ export default function Index() {
   const [errorText, setErrorText] = useState<string | null>(null);
   const [menuState, setMenuState] = useState<CardMenuState | null>(null);
   const [deletingBookId, setDeletingBookId] = useState<string | null>(null);
+  const [pendingDeleteBook, setPendingDeleteBook] = useState<BookCardItem | null>(
+    null
+  );
   const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
@@ -388,24 +392,23 @@ export default function Index() {
 
   function handleDeleteMenuPress(book: BookCardItem) {
     setMenuState(null);
+    setPendingDeleteBook(book);
+  }
 
-    Alert.alert(
-      "删除绘本",
-      `确定删除《${book.title}》吗？删除后不可恢复。`,
-      [
-        {
-          text: "取消",
-          style: "cancel",
-        },
-        {
-          text: "删除",
-          style: "destructive",
-          onPress: () => {
-            void handleConfirmDelete(book);
-          },
-        },
-      ]
-    );
+  function handleCancelDeleteDialog() {
+    if (deletingBookId) {
+      return;
+    }
+
+    setPendingDeleteBook(null);
+  }
+
+  function handleDeleteDialogConfirm() {
+    if (!pendingDeleteBook) {
+      return;
+    }
+
+    void handleConfirmDelete(pendingDeleteBook);
   }
 
   async function handleConfirmDelete(book: BookCardItem) {
@@ -421,6 +424,7 @@ export default function Index() {
       }
 
       setReloadKey((current) => current + 1);
+      setPendingDeleteBook(null);
     } catch (error) {
       console.error("Failed to delete book", error);
       Alert.alert("删除失败", "绘本删除未完成，请稍后重试。");
@@ -486,6 +490,23 @@ export default function Index() {
             onDelete={handleDeleteMenuPress}
           />
         ) : null}
+
+        <Dialog
+          visible={pendingDeleteBook !== null}
+          title="删除绘本"
+          message={
+            pendingDeleteBook
+              ? `确定删除《${pendingDeleteBook.title}》吗？\n此绘本不可恢复。`
+              : ""
+          }
+          cancelText="取消"
+          confirmText={deletingBookId ? "删除中..." : "删除"}
+          onCancel={handleCancelDeleteDialog}
+          onRequestClose={handleCancelDeleteDialog}
+          onConfirm={handleDeleteDialogConfirm}
+          confirmDisabled={pendingDeleteBook === null || deletingBookId !== null}
+          cancelDisabled={deletingBookId !== null}
+        />
       </View>
     </SafeAreaView>
   );
