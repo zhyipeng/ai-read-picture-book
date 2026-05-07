@@ -1,6 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useIsFocused } from "@react-navigation/native";
-import { Image } from "expo-image";
 import { router, Stack, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -15,6 +14,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { AppHeaderIconButton, AppHeaderSpacer } from "@/components/AppHeader";
+import { PreviewImage } from "@/components/PreviewImage";
 import { getBookById } from "@/lib/db/books";
 import { getModelConfigById } from "@/lib/db/modelConfigs";
 import { getPageById, listPagesByBookId } from "@/lib/db/pages";
@@ -541,7 +541,7 @@ export default function BookPageDetailScreen() {
         >
           <View style={styles.heroCard}>
             {imageUri ? (
-              <Image
+              <PreviewImage
                 source={{ uri: imageUri }}
                 style={styles.heroImage}
                 contentFit="cover"
@@ -657,7 +657,7 @@ export default function BookPageDetailScreen() {
           <View style={styles.playerInfo}>
             <View style={styles.playerThumbWrap}>
               {imageUri ? (
-                <Image
+                <PreviewImage
                   source={{ uri: imageUri }}
                   style={styles.playerThumb}
                   contentFit="cover"

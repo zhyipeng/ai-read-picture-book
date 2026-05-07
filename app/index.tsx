@@ -1,6 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useIsFocused } from "@react-navigation/native";
-import { Image } from "expo-image";
 import { Link, router } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -17,6 +16,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { ActionButton } from "@/components/ActionButton";
 import { Dialog } from "@/components/Dialog";
+import { PreviewImage } from "@/components/PreviewImage";
 import { deleteBook, listBooks } from "@/lib/db/books";
 import {
   deleteBookDirectory,
@@ -165,7 +165,7 @@ function BookCard({
       delayLongPress={260}
     >
       {item.coverUri ? (
-        <Image
+        <PreviewImage
           source={{ uri: item.coverUri }}
           style={styles.coverImage}
           contentFit="cover"

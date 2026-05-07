@@ -1,5 +1,4 @@
 import { Ionicons } from "@expo/vector-icons";
-import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
 import { useEffect, useRef, useState } from "react";
@@ -19,6 +18,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { ActionButton } from "@/components/ActionButton";
+import { PreviewImage } from "@/components/PreviewImage";
 import { createBook, deleteBook, getBookById, updateBook } from "@/lib/db/books";
 import {
   createPages,
@@ -881,7 +881,7 @@ export function BookEditorScreen({
               <View style={styles.importCard}>
                 {coverImage ? (
                   <View style={styles.coverPreviewRow}>
-                    <Image
+                    <PreviewImage
                       source={{ uri: coverImage.uri }}
                       style={styles.coverPreviewImage}
                       contentFit="cover"
@@ -1003,7 +1003,7 @@ export function BookEditorScreen({
                         onDragMove={handleDragMove}
                         onDragEnd={handleDragEnd}
                       />
-                      <Image
+                      <PreviewImage
                         source={{ uri: item.uri }}
                         style={styles.pageThumbnail}
                         contentFit="cover"
