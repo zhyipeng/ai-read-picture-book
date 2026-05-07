@@ -15,6 +15,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { ActionButton } from "@/components/ActionButton";
 import { deleteBook, listBooks } from "@/lib/db/books";
 import {
   deleteBookDirectory,
@@ -274,12 +275,14 @@ function EmptyStateCard() {
         <View style={styles.emptyBoxRightFlap} />
       </View>
       <Text style={styles.emptyTitle}>还没有绘本，先创建一本吧</Text>
-      <Link href="/books/new" asChild>
-        <Pressable style={styles.emptyButton}>
-          <Ionicons name="add" size={16} color="#fff" />
-          <Text style={styles.emptyButtonText}>新建绘本</Text>
-        </Pressable>
-      </Link>
+      <ActionButton
+        href="/books/new"
+        label="新建绘本"
+        iconName="add"
+        iconSize={16}
+        style={styles.emptyButton}
+        textStyle={styles.emptyButtonText}
+      />
     </View>
   );
 }
@@ -442,12 +445,14 @@ export default function Index() {
             </Link>
           </View>
 
-          <Link href="/books/new" asChild>
-            <Pressable style={styles.createButton}>
-              <Ionicons name="add" size={20} color="#fff" />
-              <Text style={styles.createButtonText}>新建绘本</Text>
-            </Pressable>
-          </Link>
+          <ActionButton
+            href="/books/new"
+            label="新建绘本"
+            iconName="add"
+            iconSize={20}
+            style={styles.createButton}
+            textStyle={styles.createButtonText}
+          />
 
           {isLoading ? (
             <View style={styles.loadingCard}>

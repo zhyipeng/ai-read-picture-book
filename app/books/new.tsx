@@ -16,6 +16,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { ActionButton } from "@/components/ActionButton";
 import {
   createBook,
   deleteBook,
@@ -472,20 +473,16 @@ export default function NewBookScreen() {
             </View>
           </View>
 
-          <Pressable
-            style={[
-              styles.saveButton,
-              canSave ? null : styles.saveButtonDisabled,
-            ]}
+          <ActionButton
+            label={isSaving ? "保存中..." : "保存绘本"}
+            style={styles.saveButton}
+            disabledStyle={styles.saveButtonDisabled}
+            textStyle={styles.saveButtonText}
             onPress={() => {
               void handleSave();
             }}
             disabled={!canSave}
-          >
-            <Text style={styles.saveButtonText}>
-              {isSaving ? "保存中..." : "保存绘本"}
-            </Text>
-          </Pressable>
+          />
 
           <Text style={styles.footerHint}>
             {pageCount > 0 || coverImage
