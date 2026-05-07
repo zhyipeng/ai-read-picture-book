@@ -1,4 +1,5 @@
 import * as FileSystem from "expo-file-system/legacy";
+import { Platform } from "react-native";
 
 import {
   getAppStorageRootDirectory,
@@ -9,6 +10,12 @@ import {
   getPageAudioPath,
   getPageImagePath,
 } from "@/lib/storage/paths";
+import {
+  deleteWebImagesByBookId,
+  getWebImageObjectUrl,
+  isWebImageUri,
+  saveWebImage,
+} from "@/lib/storage/web-images";
 
 async function ensureDirectoryExists(directory: string): Promise<void> {
   const info = await FileSystem.getInfoAsync(directory);
@@ -53,6 +60,40 @@ export async function copyImageToBook(params: {
   return destinationPath;
 }
 
+export async function persistImageToBook(params: {
+  bookId: string;
+  pageId: string;
+  sourceUri: string;
+  fallbackExtension?: string;
+  webFile?: Blob | File | null;
+}): Promise<string> {
+  if (Platform.OS === "web") {
+    return saveWebImage({
+      bookId: params.bookId,
+      pageId: params.pageId,
+      file: params.webFile,
+    });
+  }
+
+  return copyImageToBook(params);
+}
+
+export async function getPersistedImageUri(imagePath: string): Promise<{
+  uri: string;
+  revoke?: () => void;
+}> {
+  if (!isWebImageUri(imagePath)) {
+    return { uri: imagePath };
+  }
+
+  const objectUrl = await getWebImageObjectUrl(imagePath);
+
+  return {
+    uri: objectUrl,
+    revoke: () => URL.revokeObjectURL(objectUrl),
+  };
+}
+
 export async function writeAudioToPage(params: {
   bookId: string;
   pageId: string;
@@ -83,6 +124,11 @@ export async function deleteFileIfExists(filePath: string): Promise<void> {
 }
 
 export async function deleteBookDirectory(bookId: string): Promise<void> {
+  if (Platform.OS === "web") {
+    await deleteWebImagesByBookId(bookId);
+    return;
+  }
+
   const directory = getBookDirectory(bookId);
   const info = await FileSystem.getInfoAsync(directory);
 

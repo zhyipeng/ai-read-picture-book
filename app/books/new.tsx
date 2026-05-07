@@ -23,7 +23,10 @@ import {
 } from "@/lib/db/books";
 import { createPages } from "@/lib/db/pages";
 import { createId } from "@/lib/db/utils";
-import { deleteBookDirectory, copyImageToBook } from "@/lib/storage/files";
+import {
+  deleteBookDirectory,
+  persistImageToBook,
+} from "@/lib/storage/files";
 import type { BookLanguage } from "@/types/common";
 
 const LANGUAGE_OPTIONS: {
@@ -40,6 +43,7 @@ type PendingPageImage = {
   fileName: string | null;
   width: number;
   height: number;
+  file?: File | null;
 };
 
 function normalizePickedAssets(
@@ -51,6 +55,7 @@ function normalizePickedAssets(
     fileName: asset.fileName ?? null,
     width: asset.width,
     height: asset.height,
+    file: asset.file,
   }));
 }
 
@@ -135,10 +140,11 @@ export default function NewBookScreen() {
         const pageInputs = await Promise.all(
           pendingImages.map(async (item, index) => {
             const pageId = createId("page");
-            const imagePath = await copyImageToBook({
+            const imagePath = await persistImageToBook({
               bookId: book.id,
               pageId,
               sourceUri: item.uri,
+              webFile: item.file,
             });
 
             return {
