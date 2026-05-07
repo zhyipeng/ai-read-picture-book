@@ -1,69 +1,83 @@
-import { Feather, Ionicons } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
+import { useIsFocused } from "@react-navigation/native";
+import { Image } from "expo-image";
 import { Link } from "expo-router";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useEffect, useState } from "react";
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-type BookCardItem = {
-  id: string;
-  title: string;
-  language: string;
-  pages: string;
-  progressText: string;
-  progressValue: number;
-  recentPage: string;
+import { listBooks } from "@/lib/db/books";
+import { getPersistedImageUri } from "@/lib/storage/files";
+import type { Book } from "@/types/book";
+
+type BookCardTheme = {
   accentColor: string;
-  progressColor: string;
   languageBackground: string;
   languageColor: string;
-  coverTheme: "moon" | "bear" | "caterpillar";
+  fallbackTheme: "moon" | "bear" | "caterpillar";
 };
 
-const books: BookCardItem[] = [
+type BookCardItem = Book & {
+  coverUri: string | null;
+  theme: BookCardTheme;
+};
+
+const CARD_THEMES: BookCardTheme[] = [
   {
-    id: "moonlight-flavor",
-    title: "月亮的味道",
-    language: "中文",
-    pages: "16 页",
-    progressText: "12/16 (75%)",
-    progressValue: 0.75,
-    recentPage: "第 8 页",
     accentColor: "#4C7EB5",
-    progressColor: "#AAB7CA",
     languageBackground: "#E6F1D8",
     languageColor: "#587438",
-    coverTheme: "moon",
+    fallbackTheme: "moon",
   },
   {
-    id: "bear-breakfast",
-    title: "小熊的早餐",
-    language: "中文",
-    pages: "20 页",
-    progressText: "20/20 (100%)",
-    progressValue: 1,
-    recentPage: "第 20 页",
     accentColor: "#BE8B58",
-    progressColor: "#4DA55A",
-    languageBackground: "#E6F1D8",
-    languageColor: "#587438",
-    coverTheme: "bear",
+    languageBackground: "#F6E7D6",
+    languageColor: "#8A5A2C",
+    fallbackTheme: "bear",
   },
   {
-    id: "hungry-caterpillar",
-    title: "The Very Hungry Caterpillar",
-    language: "English",
-    pages: "28 页",
-    progressText: "18/28 (64%)",
-    progressValue: 0.64,
-    recentPage: "第 12 页",
     accentColor: "#B5CE7E",
-    progressColor: "#C7C7C7",
     languageBackground: "#DFF4E4",
     languageColor: "#4E7A57",
-    coverTheme: "caterpillar",
+    fallbackTheme: "caterpillar",
   },
 ];
 
-function BookCover({ theme, accentColor }: { theme: BookCardItem["coverTheme"]; accentColor: string }) {
+function getThemeByIndex(index: number): BookCardTheme {
+  return CARD_THEMES[index % CARD_THEMES.length] ?? CARD_THEMES[0];
+}
+
+function getLanguageLabel(language: Book["language"]): string {
+  return language === "zh" ? "中文" : "英文";
+}
+
+function formatUpdatedAt(updatedAt: string): string {
+  const date = new Date(updatedAt);
+
+  if (Number.isNaN(date.getTime())) {
+    return "最近更新";
+  }
+
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+
+  return `最近更新 ${month}-${day}`;
+}
+
+function BookCoverFallback({
+  theme,
+  accentColor,
+}: {
+  theme: BookCardTheme["fallbackTheme"];
+  accentColor: string;
+}) {
   if (theme === "moon") {
     return (
       <View style={[styles.coverArt, { backgroundColor: accentColor }]}>
@@ -109,51 +123,61 @@ function BookCover({ theme, accentColor }: { theme: BookCardItem["coverTheme"]; 
 }
 
 function BookCard({ item }: { item: BookCardItem }) {
+  const languageLabel = getLanguageLabel(item.language);
+  const pageCountText = `${item.pageCount} 页`;
+  const updatedAtText = formatUpdatedAt(item.updatedAt);
+
   return (
     <Link href={`/books/${item.id}`} asChild>
       <Pressable style={styles.card}>
-        <BookCover theme={item.coverTheme} accentColor={item.accentColor} />
+        {item.coverUri ? (
+          <Image
+            source={{ uri: item.coverUri }}
+            style={styles.coverImage}
+            contentFit="cover"
+          />
+        ) : (
+          <BookCoverFallback
+            theme={item.theme.fallbackTheme}
+            accentColor={item.theme.accentColor}
+          />
+        )}
 
         <View style={styles.cardBody}>
           <View style={styles.cardHeader}>
             <Text numberOfLines={2} style={styles.cardTitle}>
               {item.title}
             </Text>
-            <Feather name="more-horizontal" size={18} color="#1f2937" />
+            <Ionicons name="chevron-forward" size={18} color="#8b7d6f" />
           </View>
 
           <View style={styles.metaRow}>
             <View
               style={[
                 styles.languageTag,
-                { backgroundColor: item.languageBackground },
+                { backgroundColor: item.theme.languageBackground },
               ]}
             >
-              <Text style={[styles.languageTagText, { color: item.languageColor }]}>
-                {item.language}
+              <Text
+                style={[
+                  styles.languageTagText,
+                  { color: item.theme.languageColor },
+                ]}
+              >
+                {languageLabel}
               </Text>
             </View>
-            <Text style={styles.pageCount}>{item.pages}</Text>
+            <Text style={styles.pageCount}>{pageCountText}</Text>
           </View>
 
-          <View style={styles.progressSection}>
-            <Text style={styles.progressLabel}>
-              生成进度 <Text style={styles.progressValueText}>{item.progressText}</Text>
+          <Text style={styles.metaHint}>{updatedAtText}</Text>
+
+          <View style={styles.statusRow}>
+            <Ionicons name="images-outline" size={14} color="#9c8c7d" />
+            <Text style={styles.statusText}>
+              {item.coverImagePath ? "已设置封面" : "未设置封面"}
             </Text>
-            <View style={styles.progressTrack}>
-              <View
-                style={[
-                  styles.progressFill,
-                  {
-                    width: `${item.progressValue * 100}%`,
-                    backgroundColor: item.progressColor,
-                  },
-                ]}
-              />
-            </View>
           </View>
-
-          <Text style={styles.recentRead}>最近阅读: {item.recentPage}</Text>
         </View>
       </Pressable>
     </Link>
@@ -181,43 +205,85 @@ function EmptyStateCard() {
   );
 }
 
-function MiniPlayer() {
-  return (
-    <View style={styles.bottomArea}>
-      <View style={styles.playerCard}>
-        <View style={styles.playerLeft}>
-          <View style={styles.playerCover}>
-            <View style={styles.playerCoverArt}>
-              <View style={styles.playerMoon} />
-              <View style={styles.playerHill} />
-            </View>
-          </View>
-          <View style={styles.playerMeta}>
-            <Text numberOfLines={1} style={styles.playerTitle}>
-              月亮的味道
-            </Text>
-            <Text style={styles.playerSubtitle}>第 8 / 16 页</Text>
-          </View>
-        </View>
-
-        <View style={styles.playerControls}>
-          <Ionicons name="play-skip-back" size={18} color="#1f2937" />
-          <View style={styles.playButton}>
-            <Ionicons name="play" size={16} color="#fff" />
-          </View>
-          <Ionicons name="play-skip-forward" size={18} color="#1f2937" />
-        </View>
-
-        <Pressable style={styles.speedBadge}>
-          <Text style={styles.speedText}>1.0x</Text>
-        </Pressable>
-      </View>
-    </View>
-  );
-}
-
 export default function Index() {
-  const hasBooks = books.length > 0;
+  const isFocused = useIsFocused();
+  const [books, setBooks] = useState<BookCardItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [errorText, setErrorText] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isFocused) {
+      return;
+    }
+
+    let active = true;
+    const revokers: (() => void)[] = [];
+
+    async function loadBooks() {
+      setIsLoading(true);
+
+      try {
+        const databaseBooks = await listBooks();
+        const items = await Promise.all(
+          databaseBooks.map(async (book, index) => {
+            const theme = getThemeByIndex(index);
+
+            if (!book.coverImagePath) {
+              return {
+                ...book,
+                coverUri: null,
+                theme,
+              };
+            }
+
+            const resolvedCover = await getPersistedImageUri(book.coverImagePath);
+
+            if (!active) {
+              resolvedCover.revoke?.();
+              return null;
+            }
+
+            if (resolvedCover.revoke) {
+              revokers.push(resolvedCover.revoke);
+            }
+
+            return {
+              ...book,
+              coverUri: resolvedCover.uri,
+              theme,
+            };
+          })
+        );
+
+        if (!active) {
+          return;
+        }
+
+        setBooks(items.filter((item): item is BookCardItem => item !== null));
+        setErrorText(null);
+      } catch (error) {
+        console.error("Failed to load books", error);
+
+        if (!active) {
+          return;
+        }
+
+        setBooks([]);
+        setErrorText("绘本列表加载失败，请稍后重试。");
+      } finally {
+        if (active) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    void loadBooks();
+
+    return () => {
+      active = false;
+      revokers.forEach((revoke) => revoke());
+    };
+  }, [isFocused]);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -242,7 +308,16 @@ export default function Index() {
             </Pressable>
           </Link>
 
-          {hasBooks ? (
+          {isLoading ? (
+            <View style={styles.loadingCard}>
+              <ActivityIndicator size="small" color="#ef8f38" />
+              <Text style={styles.loadingText}>正在加载绘本列表...</Text>
+            </View>
+          ) : errorText ? (
+            <View style={styles.errorCard}>
+              <Text style={styles.errorText}>{errorText}</Text>
+            </View>
+          ) : books.length > 0 ? (
             <View style={styles.listSection}>
               {books.map((item) => (
                 <BookCard key={item.id} item={item} />
@@ -252,8 +327,6 @@ export default function Index() {
             <EmptyStateCard />
           )}
         </ScrollView>
-
-        <MiniPlayer />
       </View>
     </SafeAreaView>
   );
@@ -271,7 +344,7 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: 16,
     paddingTop: 10,
-    paddingBottom: 164,
+    paddingBottom: 32,
   },
   header: {
     flexDirection: "row",
@@ -310,6 +383,37 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#fff",
   },
+  loadingCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    marginTop: 24,
+    paddingVertical: 18,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#efe8df",
+    backgroundColor: "#fffaf6",
+  },
+  loadingText: {
+    fontSize: 15,
+    color: "#6b7280",
+  },
+  errorCard: {
+    marginTop: 24,
+    paddingHorizontal: 16,
+    paddingVertical: 18,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#efd2c8",
+    backgroundColor: "#fff7f4",
+  },
+  errorText: {
+    textAlign: "center",
+    fontSize: 15,
+    lineHeight: 22,
+    color: "#a14b38",
+  },
   listSection: {
     gap: 12,
   },
@@ -334,6 +438,13 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     position: "relative",
     marginRight: 12,
+  },
+  coverImage: {
+    width: 76,
+    height: 104,
+    borderRadius: 10,
+    marginRight: 12,
+    backgroundColor: "#efe4d3",
   },
   coverVerticalText: {
     position: "absolute",
@@ -505,7 +616,7 @@ const styles = StyleSheet.create({
   },
   cardBody: {
     flex: 1,
-    justifyContent: "space-between",
+    justifyContent: "center",
   },
   cardHeader: {
     flexDirection: "row",
@@ -524,7 +635,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    marginTop: 6,
+    marginTop: 8,
   },
   languageTag: {
     paddingHorizontal: 9,
@@ -539,30 +650,18 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#6b7280",
   },
-  progressSection: {
-    marginTop: 12,
-    gap: 4,
-  },
-  progressLabel: {
+  metaHint: {
+    marginTop: 10,
     fontSize: 13,
     color: "#6b7280",
   },
-  progressValueText: {
-    color: "#4b5563",
-    fontWeight: "600",
-  },
-  progressTrack: {
-    height: 5,
-    borderRadius: 999,
-    backgroundColor: "#ece7e1",
-    overflow: "hidden",
-  },
-  progressFill: {
-    height: "100%",
-    borderRadius: 999,
-  },
-  recentRead: {
+  statusRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
     marginTop: 8,
+  },
+  statusText: {
     fontSize: 13,
     color: "#4b5563",
   },
@@ -651,103 +750,5 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "700",
     color: "#fff",
-  },
-  bottomArea: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    paddingHorizontal: 12,
-    paddingTop: 8,
-    paddingBottom: 10,
-    backgroundColor: "rgba(247, 243, 238, 0.95)",
-  },
-  playerCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "#e7dfd5",
-    backgroundColor: "#fffaf6",
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    gap: 10,
-  },
-  playerLeft: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  playerCover: {
-    width: 28,
-    height: 28,
-    borderRadius: 6,
-    overflow: "hidden",
-  },
-  playerCoverArt: {
-    flex: 1,
-    backgroundColor: "#4C7EB5",
-  },
-  playerMoon: {
-    position: "absolute",
-    top: 4,
-    right: 4,
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: "#f5d06f",
-  },
-  playerHill: {
-    position: "absolute",
-    left: -2,
-    right: -2,
-    bottom: 0,
-    height: 10,
-    borderTopLeftRadius: 8,
-    borderTopRightRadius: 10,
-    backgroundColor: "#7fb16b",
-  },
-  playerMeta: {
-    flex: 1,
-    gap: 1,
-  },
-  playerTitle: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#111827",
-  },
-  playerSubtitle: {
-    fontSize: 11,
-    color: "#6b7280",
-  },
-  playerControls: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 14,
-  },
-  playButton: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: "#30343b",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  speedBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 10,
-    backgroundColor: "#f3ede5",
-  },
-  speedText: {
-    fontSize: 12,
-    color: "#374151",
-  },
-  deleteHint: {
-    marginTop: 8,
-    textAlign: "center",
-    fontSize: 14,
-    color: "#3f3f46",
   },
 });

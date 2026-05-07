@@ -16,6 +16,7 @@ export const SCHEMA_STATEMENTS = [
     id TEXT PRIMARY KEY NOT NULL,
     title TEXT NOT NULL,
     language TEXT NOT NULL CHECK(language IN ('zh', 'en')),
+    coverImagePath TEXT,
     coverPageId TEXT,
     pageCount INTEGER NOT NULL DEFAULT 0,
     currentPageIndex INTEGER NOT NULL DEFAULT 0,

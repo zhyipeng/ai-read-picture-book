@@ -37,7 +37,7 @@ const LANGUAGE_OPTIONS: {
   { label: "英文", value: "en" },
 ];
 
-type PendingPageImage = {
+type PickedImage = {
   id: string;
   uri: string;
   fileName: string | null;
@@ -46,24 +46,30 @@ type PendingPageImage = {
   file?: File | null;
 };
 
-function normalizePickedAssets(
-  assets: ImagePicker.ImagePickerAsset[]
-): PendingPageImage[] {
-  return assets.map((asset) => ({
+function mapPickedAsset(asset: ImagePicker.ImagePickerAsset): PickedImage {
+  return {
     id: createId("import"),
     uri: asset.uri,
     fileName: asset.fileName ?? null,
     width: asset.width,
     height: asset.height,
     file: asset.file,
-  }));
+  };
+}
+
+function normalizePickedAssets(
+  assets: ImagePicker.ImagePickerAsset[]
+): PickedImage[] {
+  return assets.map(mapPickedAsset);
 }
 
 export default function NewBookScreen() {
   const [title, setTitle] = useState("");
   const [language, setLanguage] = useState<BookLanguage>("zh");
   const [titleError, setTitleError] = useState<string | null>(null);
-  const [pendingImages, setPendingImages] = useState<PendingPageImage[]>([]);
+  const [coverImage, setCoverImage] = useState<PickedImage | null>(null);
+  const [pendingImages, setPendingImages] = useState<PickedImage[]>([]);
+  const [isPickingCoverImage, setIsPickingCoverImage] = useState(false);
   const [isPickingImages, setIsPickingImages] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -71,22 +77,65 @@ export default function NewBookScreen() {
   const pageCount = pendingImages.length;
   const canSave = trimmedTitle.length > 0 && !isSaving;
 
+  async function ensureMediaLibraryPermission(): Promise<boolean> {
+    if (Platform.OS === "web") {
+      return true;
+    }
+
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+    if (permission.granted) {
+      return true;
+    }
+
+    Alert.alert("需要相册权限", "请允许访问相册后再导入绘本封面或页面图片。");
+    return false;
+  }
+
+  async function handlePickCoverImage() {
+    if (isPickingCoverImage || isPickingImages || isSaving) {
+      return;
+    }
+
+    try {
+      setIsPickingCoverImage(true);
+
+      const permissionGranted = await ensureMediaLibraryPermission();
+
+      if (!permissionGranted) {
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        quality: 1,
+      });
+
+      if (result.canceled || result.assets.length === 0) {
+        return;
+      }
+
+      setCoverImage(mapPickedAsset(result.assets[0]));
+    } catch (error) {
+      console.error("Failed to pick cover image", error);
+      Alert.alert("导入失败", "绘本封面导入未完成，请稍后重试。");
+    } finally {
+      setIsPickingCoverImage(false);
+    }
+  }
+
   async function handlePickImages() {
-    if (isPickingImages || isSaving) {
+    if (isPickingCoverImage || isPickingImages || isSaving) {
       return;
     }
 
     try {
       setIsPickingImages(true);
 
-      if (Platform.OS !== "web") {
-        const permission =
-          await ImagePicker.requestMediaLibraryPermissionsAsync();
+      const permissionGranted = await ensureMediaLibraryPermission();
 
-        if (!permission.granted) {
-          Alert.alert("需要相册权限", "请允许访问相册后再导入绘本页面图片。");
-          return;
-        }
+      if (!permissionGranted) {
+        return;
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
@@ -136,6 +185,17 @@ export default function NewBookScreen() {
       });
       createdBookId = book.id;
 
+      let coverImagePath: string | null = null;
+
+      if (coverImage) {
+        coverImagePath = await persistImageToBook({
+          bookId: book.id,
+          pageId: "cover",
+          sourceUri: coverImage.uri,
+          webFile: coverImage.file,
+        });
+      }
+
       if (pageCount > 0) {
         const pageInputs = await Promise.all(
           pendingImages.map(async (item, index) => {
@@ -159,8 +219,13 @@ export default function NewBookScreen() {
         await createPages(pageInputs);
 
         await updateBook(book.id, {
+          coverImagePath,
           coverPageId: pageInputs[0]?.id ?? null,
           pageCount,
+        });
+      } else if (coverImagePath) {
+        await updateBook(book.id, {
+          coverImagePath,
         });
       }
 
@@ -255,6 +320,71 @@ export default function NewBookScreen() {
                 })}
               </View>
               <Text style={styles.helperText}>默认已选中文，可随时切换。</Text>
+            </View>
+
+            <View style={styles.section}>
+              <Text style={styles.label}>绘本封面</Text>
+              <View style={styles.importCard}>
+                {coverImage ? (
+                  <View style={styles.coverPreviewRow}>
+                    <Image
+                      source={{ uri: coverImage.uri }}
+                      style={styles.coverPreviewImage}
+                      contentFit="cover"
+                    />
+                    <View style={styles.coverPreviewMeta}>
+                      <Text numberOfLines={1} style={styles.pageFileName}>
+                        {coverImage.fileName ?? "已选封面"}
+                      </Text>
+                      <Text style={styles.pageSubText}>
+                        {coverImage.width} × {coverImage.height}
+                      </Text>
+                    </View>
+                    <Pressable
+                      hitSlop={8}
+                      style={styles.deleteButton}
+                      onPress={() => setCoverImage(null)}
+                      disabled={isSaving}
+                    >
+                      <Ionicons
+                        name="trash-outline"
+                        size={18}
+                        color="#b67b4c"
+                      />
+                    </Pressable>
+                  </View>
+                ) : (
+                  <View style={styles.emptyCoverCard}>
+                    <Ionicons name="image-outline" size={20} color="#c7ad8d" />
+                    <Text style={styles.emptyPagesText}>
+                      尚未选择封面，可单独上传一张图片作为绘本封面。
+                    </Text>
+                  </View>
+                )}
+                <Pressable
+                  style={[
+                    styles.importButton,
+                    isPickingCoverImage ? styles.importButtonDisabled : null,
+                    coverImage ? styles.secondaryImportButton : null,
+                  ]}
+                  onPress={() => {
+                    void handlePickCoverImage();
+                  }}
+                  disabled={isPickingCoverImage || isPickingImages || isSaving}
+                >
+                  <Ionicons name="image-outline" size={18} color="#5a88d9" />
+                  <Text style={styles.importButtonText}>
+                    {isPickingCoverImage
+                      ? "导入中..."
+                      : coverImage
+                        ? "重新选择封面"
+                        : "上传封面"}
+                  </Text>
+                </Pressable>
+                <Text style={styles.importHint}>
+                  封面为单张图片，与页面列表分开保存。
+                </Text>
+              </View>
             </View>
 
             <View style={styles.section}>
@@ -358,9 +488,9 @@ export default function NewBookScreen() {
           </Pressable>
 
           <Text style={styles.footerHint}>
-            {pageCount > 0
-              ? "保存时会把已选图片复制到本地私有目录，并为每张图创建页面记录。"
-              : "可先保存基础信息，也可先导入多张页面图片后再保存。"}
+            {pageCount > 0 || coverImage
+              ? "保存时会持久化封面与已选页面图片，并为每张页面图创建记录。"
+              : "可先保存基础信息，也可先上传封面、导入页面图片后再保存。"}
           </Text>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -483,6 +613,43 @@ const styles = StyleSheet.create({
     textAlign: "center",
     fontSize: 13,
     color: "#9c8c7d",
+  },
+  emptyCoverCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#f1e3cd",
+    paddingHorizontal: 14,
+    paddingVertical: 16,
+    backgroundColor: "#fffaf2",
+  },
+  coverPreviewRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#f1e3cd",
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    backgroundColor: "#fffefb",
+  },
+  coverPreviewImage: {
+    width: 76,
+    height: 76,
+    borderRadius: 14,
+    backgroundColor: "#efe4d3",
+  },
+  coverPreviewMeta: {
+    flex: 1,
+    gap: 4,
+  },
+  secondaryImportButton: {
+    backgroundColor: "#f4f8ff",
   },
   importedHeader: {
     flexDirection: "row",

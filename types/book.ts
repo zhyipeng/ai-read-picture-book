@@ -4,6 +4,7 @@ export type Book = {
   id: string;
   title: string;
   language: BookLanguage;
+  coverImagePath: string | null;
   coverPageId: string | null;
   pageCount: number;
   currentPageIndex: number;
@@ -16,6 +17,7 @@ export type Book = {
 export type CreateBookInput = {
   title: string;
   language: BookLanguage;
+  coverImagePath?: string | null;
   coverPageId?: string | null;
   pageCount?: number;
   currentPageIndex?: number;

@@ -18,6 +18,7 @@ export async function createBook(input: CreateBookInput): Promise<Book> {
       id,
       title,
       language,
+      coverImagePath,
       coverPageId,
       pageCount,
       currentPageIndex,
@@ -25,10 +26,11 @@ export async function createBook(input: CreateBookInput): Promise<Book> {
       ttsConfigId,
       createdAt,
       updatedAt
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     id,
     input.title,
     input.language,
+    input.coverImagePath ?? null,
     input.coverPageId ?? null,
     input.pageCount ?? 0,
     input.currentPageIndex ?? 0,
@@ -78,6 +80,9 @@ export async function updateBook(
   }
   if (input.language !== undefined) {
     updates.push(["language", input.language]);
+  }
+  if (input.coverImagePath !== undefined) {
+    updates.push(["coverImagePath", input.coverImagePath]);
   }
   if (input.coverPageId !== undefined) {
     updates.push(["coverPageId", input.coverPageId]);

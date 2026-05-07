@@ -11,12 +11,29 @@ const DATABASE_NAME = "huiben.db";
 let databasePromise: Promise<SQLite.SQLiteDatabase> | null = null;
 let initializationPromise: Promise<SQLite.SQLiteDatabase> | null = null;
 
+type SqliteTableInfoRow = {
+  name: string;
+};
+
 async function openDatabase(): Promise<SQLite.SQLiteDatabase> {
   if (!databasePromise) {
     databasePromise = SQLite.openDatabaseAsync(DATABASE_NAME);
   }
 
   return databasePromise;
+}
+
+async function ensureBooksTableColumns(
+  database: SQLite.SQLiteDatabase
+): Promise<void> {
+  const columns = await database.getAllAsync<SqliteTableInfoRow>(
+    "PRAGMA table_info(books)"
+  );
+  const columnNames = new Set(columns.map((column) => column.name));
+
+  if (!columnNames.has("coverImagePath")) {
+    await database.execAsync("ALTER TABLE books ADD COLUMN coverImagePath TEXT;");
+  }
 }
 
 export async function initDatabase(): Promise<SQLite.SQLiteDatabase> {
@@ -29,6 +46,8 @@ export async function initDatabase(): Promise<SQLite.SQLiteDatabase> {
       for (const statement of SCHEMA_STATEMENTS) {
         await database.execAsync(statement);
       }
+
+      await ensureBooksTableColumns(database);
 
       await database.runAsync(
         `INSERT OR IGNORE INTO app_settings (
