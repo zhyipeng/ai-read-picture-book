@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
+  PanResponder,
   Platform,
   Pressable,
   ScrollView,
@@ -44,12 +45,17 @@ const LANGUAGE_OPTIONS: {
   { label: "英文", value: "en" },
 ];
 
+const DRAG_ACTIVATION_DELAY_MS = 180;
+const DRAG_SWAP_THRESHOLD = 48;
+
 type BookEditorMode = "create" | "edit";
 
 type BookEditorScreenProps = {
   mode: BookEditorMode;
   bookId?: string;
 };
+
+type DragDirection = "up" | "down";
 
 type EditorImage = {
   id: string;
@@ -97,11 +103,165 @@ function getImageMetaText(image: EditorImage, fallbackText: string): string {
   return fallbackText;
 }
 
+function moveArrayItem<T>(items: T[], fromIndex: number, toIndex: number): T[] {
+  if (
+    fromIndex < 0 ||
+    toIndex < 0 ||
+    fromIndex >= items.length ||
+    toIndex >= items.length ||
+    fromIndex === toIndex
+  ) {
+    return items;
+  }
+
+  const nextItems = [...items];
+  const [movedItem] = nextItems.splice(fromIndex, 1);
+
+  nextItems.splice(toIndex, 0, movedItem);
+
+  return nextItems;
+}
+
+function ReorderHandle({
+  itemId,
+  disabled,
+  isDragging,
+  onDragStart,
+  onDragMove,
+  onDragEnd,
+}: {
+  itemId: string;
+  disabled: boolean;
+  isDragging: boolean;
+  onDragStart: (itemId: string) => void;
+  onDragMove: (itemId: string, direction: DragDirection) => boolean;
+  onDragEnd: () => void;
+}) {
+  const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const activatedRef = useRef(false);
+  const lastMoveYRef = useRef(0);
+  const latestPropsRef = useRef({
+    itemId,
+    disabled,
+    onDragStart,
+    onDragMove,
+    onDragEnd,
+  });
+
+  useEffect(() => {
+    latestPropsRef.current = {
+      itemId,
+      disabled,
+      onDragStart,
+      onDragMove,
+      onDragEnd,
+    };
+  }, [disabled, itemId, onDragEnd, onDragMove, onDragStart]);
+
+  function clearHoldTimer() {
+    if (holdTimerRef.current) {
+      clearTimeout(holdTimerRef.current);
+      holdTimerRef.current = null;
+    }
+  }
+
+  function finishDrag() {
+    clearHoldTimer();
+
+    if (activatedRef.current) {
+      latestPropsRef.current.onDragEnd();
+    }
+
+    activatedRef.current = false;
+  }
+
+  useEffect(() => {
+    return () => {
+      clearHoldTimer();
+
+      if (activatedRef.current) {
+        latestPropsRef.current.onDragEnd();
+      }
+
+      activatedRef.current = false;
+    };
+  }, []);
+
+  const responderRef = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => !latestPropsRef.current.disabled,
+      onMoveShouldSetPanResponder: () => false,
+      onPanResponderGrant: (event) => {
+        clearHoldTimer();
+        activatedRef.current = false;
+        lastMoveYRef.current = event.nativeEvent.pageY;
+
+        holdTimerRef.current = setTimeout(() => {
+          activatedRef.current = true;
+          latestPropsRef.current.onDragStart(latestPropsRef.current.itemId);
+        }, DRAG_ACTIVATION_DELAY_MS);
+      },
+      onPanResponderMove: (_, gestureState) => {
+        if (!activatedRef.current) {
+          return;
+        }
+
+        const deltaY = gestureState.moveY - lastMoveYRef.current;
+
+        if (deltaY >= DRAG_SWAP_THRESHOLD) {
+          const moved = latestPropsRef.current.onDragMove(
+            latestPropsRef.current.itemId,
+            "down"
+          );
+
+          if (moved) {
+            lastMoveYRef.current = gestureState.moveY;
+          }
+        } else if (deltaY <= -DRAG_SWAP_THRESHOLD) {
+          const moved = latestPropsRef.current.onDragMove(
+            latestPropsRef.current.itemId,
+            "up"
+          );
+
+          if (moved) {
+            lastMoveYRef.current = gestureState.moveY;
+          }
+        }
+      },
+      onPanResponderRelease: () => {
+        finishDrag();
+      },
+      onPanResponderTerminate: () => {
+        finishDrag();
+      },
+      onPanResponderTerminationRequest: () => !activatedRef.current,
+    })
+  );
+
+  return (
+    <View
+      {...responderRef.current.panHandlers}
+      style={[
+        styles.reorderHandle,
+        isDragging ? styles.reorderHandleActive : null,
+        disabled ? styles.reorderHandleDisabled : null,
+      ]}
+    >
+      <Ionicons
+        name="reorder-three-outline"
+        size={20}
+        color={isDragging ? "#8E5C2D" : "#B79F85"}
+      />
+    </View>
+  );
+}
+
 export function BookEditorScreen({
   mode,
   bookId,
 }: BookEditorScreenProps) {
   const revokeHandlersRef = useRef<(() => void)[]>([]);
+  const pendingImagesRef = useRef<EditorImage[]>([]);
   const [originalBook, setOriginalBook] = useState<Book | null>(null);
   const [originalPages, setOriginalPages] = useState<Page[]>([]);
   const [title, setTitle] = useState("");
@@ -114,11 +274,23 @@ export function BookEditorScreen({
   const [isSaving, setIsSaving] = useState(false);
   const [isInitializing, setIsInitializing] = useState(mode === "edit");
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [draggingItemId, setDraggingItemId] = useState<string | null>(null);
 
   const trimmedTitle = title.trim();
   const pageCount = pendingImages.length;
   const canSave = trimmedTitle.length > 0 && !isSaving && !isInitializing;
   const isEditMode = mode === "edit";
+
+  useEffect(() => {
+    pendingImagesRef.current = pendingImages;
+  }, [pendingImages]);
+
+  function updatePendingImages(updater: (current: EditorImage[]) => EditorImage[]) {
+    const nextImages = updater(pendingImagesRef.current);
+
+    pendingImagesRef.current = nextImages;
+    setPendingImages(nextImages);
+  }
 
   function cleanupResolvedImages() {
     revokeHandlersRef.current.forEach((revoke) => revoke());
@@ -165,6 +337,7 @@ export function BookEditorScreen({
           setOriginalBook(null);
           setOriginalPages([]);
           setCoverImage(null);
+          pendingImagesRef.current = [];
           setPendingImages([]);
           return;
         }
@@ -222,6 +395,7 @@ export function BookEditorScreen({
         setTitle(currentBook.title);
         setLanguage(currentBook.language);
         setCoverImage(resolvedCoverImage);
+        pendingImagesRef.current = resolvedPages;
         setPendingImages(resolvedPages);
       } catch (error) {
         console.error("Failed to load book editor data", error);
@@ -318,7 +492,7 @@ export function BookEditorScreen({
         return;
       }
 
-      setPendingImages((current) => [
+      updatePendingImages((current) => [
         ...current,
         ...normalizePickedAssets(result.assets),
       ]);
@@ -331,7 +505,36 @@ export function BookEditorScreen({
   }
 
   function handleRemovePendingImage(id: string) {
-    setPendingImages((current) => current.filter((item) => item.id !== id));
+    updatePendingImages((current) => current.filter((item) => item.id !== id));
+  }
+
+  function handleDragStart(itemId: string) {
+    setDraggingItemId(itemId);
+  }
+
+  function handleDragMove(itemId: string, direction: DragDirection): boolean {
+    const currentImages = pendingImagesRef.current;
+    const currentIndex = currentImages.findIndex((item) => item.id === itemId);
+
+    if (currentIndex < 0) {
+      return false;
+    }
+
+    const nextIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
+
+    if (nextIndex < 0 || nextIndex >= currentImages.length) {
+      return false;
+    }
+
+    const nextImages = moveArrayItem(currentImages, currentIndex, nextIndex);
+
+    pendingImagesRef.current = nextImages;
+    setPendingImages(nextImages);
+    return true;
+  }
+
+  function handleDragEnd() {
+    setDraggingItemId(null);
   }
 
   async function handleCreateBook() {
@@ -435,12 +638,10 @@ export function BookEditorScreen({
         removableOldCoverPath = originalBook.coverImagePath ?? null;
       }
 
-      const keptExistingPages = pendingImages.filter(
-        (item): item is EditorImage & { pageId: string; imagePath: string } =>
-          item.isExisting && Boolean(item.pageId) && Boolean(item.imagePath)
-      );
       const keptExistingPageIds = new Set(
-        keptExistingPages.map((item) => item.pageId)
+        pendingImages.flatMap((item) =>
+          item.isExisting && item.pageId ? [item.pageId] : []
+        )
       );
       const removedPages = originalPages.filter(
         (page) => !keptExistingPageIds.has(page.id)
@@ -455,18 +656,23 @@ export function BookEditorScreen({
         }
       }
 
-      for (const [index, item] of keptExistingPages.entries()) {
+      const existingItemsInFinalOrder = pendingImages.filter(
+        (item): item is EditorImage & { pageId: string } =>
+          item.isExisting && Boolean(item.pageId)
+      );
+      const tempIndexBase = pendingImages.length + originalPages.length + 1;
+
+      // 先把保留的旧页面整体挪到临时区间，避免最终 pageIndex 写回时撞上唯一索引。
+      for (const [offset, item] of existingItemsInFinalOrder.entries()) {
         await updatePage(item.pageId, {
-          pageIndex: index,
+          pageIndex: tempIndexBase + offset,
         });
       }
 
       const createdPageInputs = [];
-      const createdPageIds: string[] = [];
-      let nextIndex = keptExistingPages.length;
-
-      for (const item of pendingImages) {
-        if (item.isExisting) {
+      const createdPageIdByItemId = new Map<string, string>();
+      for (const [index, item] of pendingImages.entries()) {
+        if (item.isExisting && item.pageId) {
           continue;
         }
 
@@ -481,27 +687,46 @@ export function BookEditorScreen({
         createdPageInputs.push({
           id: pageId,
           bookId: originalBook.id,
-          pageIndex: nextIndex,
+          pageIndex: index,
           imagePath,
         });
-        createdPageIds.push(pageId);
-        nextIndex += 1;
+        createdPageIdByItemId.set(item.id, pageId);
       }
 
       if (createdPageInputs.length > 0) {
         await createPages(createdPageInputs);
       }
 
-      const finalPageIds = [
-        ...keptExistingPages.map((item) => item.pageId),
-        ...createdPageIds,
-      ];
+      for (const [index, item] of pendingImages.entries()) {
+        if (!item.isExisting || !item.pageId) {
+          continue;
+        }
+
+        await updatePage(item.pageId, {
+          pageIndex: index,
+        });
+      }
+
+      const finalPageIds = pendingImages.flatMap((item) => {
+        if (item.isExisting && item.pageId) {
+          return [item.pageId];
+        }
+
+        const createdPageId = createdPageIdByItemId.get(item.id);
+
+        return createdPageId ? [createdPageId] : [];
+      });
 
       let nextCoverPageId = originalBook.coverPageId;
+      const currentPageId = originalPages[originalBook.currentPageIndex]?.id ?? null;
 
       if (!nextCoverPageId || !finalPageIds.includes(nextCoverPageId)) {
         nextCoverPageId = finalPageIds[0] ?? null;
       }
+
+      const nextCurrentPageIndex = currentPageId
+        ? finalPageIds.indexOf(currentPageId)
+        : -1;
 
       await updateBook(originalBook.id, {
         title: trimmedTitle,
@@ -509,10 +734,10 @@ export function BookEditorScreen({
         coverImagePath: nextCoverImagePath,
         coverPageId: nextCoverPageId,
         pageCount: finalPageIds.length,
-        currentPageIndex: clampCurrentPageIndex(
-          originalBook.currentPageIndex,
-          finalPageIds.length
-        ),
+        currentPageIndex:
+          nextCurrentPageIndex >= 0
+            ? nextCurrentPageIndex
+            : clampCurrentPageIndex(originalBook.currentPageIndex, finalPageIds.length),
       });
 
       if (
@@ -583,6 +808,7 @@ export function BookEditorScreen({
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
+          scrollEnabled={!draggingItemId}
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.formCard}>
@@ -733,7 +959,7 @@ export function BookEditorScreen({
                 </Pressable>
                 <Text style={styles.importHint}>
                   {isEditMode
-                    ? "可继续追加页面，删除已有页面会在保存后生效。"
+                    ? "可继续追加页面，也可按住左侧排序图标拖拽调整顺序。"
                     : "支持多选，选择顺序会作为页面顺序保存。"}
                 </Text>
               </View>
@@ -741,9 +967,14 @@ export function BookEditorScreen({
 
             <View style={styles.section}>
               <View style={styles.importedHeader}>
-                <Text style={styles.label}>
-                  {isEditMode ? "页面列表（保存后生效）" : "已导入页面（按选择顺序）"}
-                </Text>
+                <View>
+                  <Text style={styles.label}>
+                    {isEditMode ? "页面列表（保存后生效）" : "已导入页面（按选择顺序）"}
+                  </Text>
+                  <Text style={styles.orderHint}>
+                    按住左侧排序图标拖拽，保存后按当前顺序写入。
+                  </Text>
+                </View>
                 <Text style={styles.importedCount}>共 {pageCount} 页</Text>
               </View>
 
@@ -757,11 +988,20 @@ export function BookEditorScreen({
               ) : (
                 <View style={styles.pagesList}>
                   {pendingImages.map((item, index) => (
-                    <View key={item.id} style={styles.pageRow}>
-                      <Ionicons
-                        name="reorder-three-outline"
-                        size={20}
-                        color="#b79f85"
+                    <View
+                      key={item.id}
+                      style={[
+                        styles.pageRow,
+                        draggingItemId === item.id ? styles.pageRowDragging : null,
+                      ]}
+                    >
+                      <ReorderHandle
+                        itemId={item.id}
+                        disabled={isSaving}
+                        isDragging={draggingItemId === item.id}
+                        onDragStart={handleDragStart}
+                        onDragMove={handleDragMove}
+                        onDragEnd={handleDragEnd}
                       />
                       <Image
                         source={{ uri: item.uri }}
@@ -770,7 +1010,9 @@ export function BookEditorScreen({
                       />
                       <View style={styles.pageRowMeta}>
                         <Text numberOfLines={1} style={styles.pageFileName}>
-                          {item.fileName ?? `页面 ${index + 1}`}
+                          {item.isExisting
+                            ? `页面 ${index + 1}`
+                            : item.fileName ?? `页面 ${index + 1}`}
                         </Text>
                         <Text style={styles.pageSubText}>
                           {getImageMetaText(
@@ -782,18 +1024,20 @@ export function BookEditorScreen({
                       <View style={styles.pageIndexBadge}>
                         <Text style={styles.pageIndexText}>{index + 1}</Text>
                       </View>
-                      <Pressable
-                        hitSlop={8}
-                        style={styles.deleteButton}
-                        onPress={() => handleRemovePendingImage(item.id)}
-                        disabled={isSaving}
-                      >
-                        <Ionicons
-                          name="trash-outline"
-                          size={18}
-                          color="#b67b4c"
-                        />
-                      </Pressable>
+                      <View style={styles.pageActions}>
+                        <Pressable
+                          hitSlop={8}
+                          style={styles.deleteButton}
+                          onPress={() => handleRemovePendingImage(item.id)}
+                          disabled={isSaving}
+                        >
+                          <Ionicons
+                            name="trash-outline"
+                            size={18}
+                            color="#b67b4c"
+                          />
+                        </Pressable>
+                      </View>
                     </View>
                   ))}
                 </View>
@@ -1012,8 +1256,14 @@ const styles = StyleSheet.create({
   },
   importedHeader: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     justifyContent: "space-between",
+  },
+  orderHint: {
+    marginTop: -4,
+    fontSize: 12,
+    lineHeight: 18,
+    color: "#9C8C7D",
   },
   importedCount: {
     fontSize: 13,
@@ -1051,6 +1301,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 10,
   },
+  pageRowDragging: {
+    borderColor: "#E4B078",
+    backgroundColor: "#FFF4E8",
+  },
+  reorderHandle: {
+    width: 28,
+    minHeight: 72,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  reorderHandleActive: {
+    backgroundColor: "#FCE8D1",
+  },
+  reorderHandleDisabled: {
+    opacity: 0.45,
+  },
   pageThumbnail: {
     width: 56,
     height: 74,
@@ -1084,6 +1351,10 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "700",
     color: "#6e5a48",
+  },
+  pageActions: {
+    alignItems: "center",
+    gap: 4,
   },
   deleteButton: {
     width: 32,
