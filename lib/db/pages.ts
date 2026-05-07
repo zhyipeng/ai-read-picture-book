@@ -23,7 +23,7 @@ function mapPageRow(row: PageRow): Page {
 export async function createPage(input: CreatePageInput): Promise<Page> {
   const database = await getDatabase();
   const now = getNowIsoString();
-  const id = createId("page");
+  const id = input.id ?? createId("page");
 
   await database.runAsync(
     `INSERT INTO pages (
@@ -76,7 +76,7 @@ export async function createPages(inputs: CreatePageInput[]): Promise<Page[]> {
   await database.withTransactionAsync(async () => {
     for (const input of inputs) {
       const now = getNowIsoString();
-      const id = createId("page");
+      const id = input.id ?? createId("page");
 
       createdIds.push(id);
 

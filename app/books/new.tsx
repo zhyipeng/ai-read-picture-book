@@ -1,41 +1,596 @@
-import { Link } from "expo-router";
-import { StyleSheet, Text, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { Image } from "expo-image";
+import * as ImagePicker from "expo-image-picker";
+import { router } from "expo-router";
+import { useState } from "react";
+import {
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+
+import {
+  createBook,
+  deleteBook,
+  updateBook,
+} from "@/lib/db/books";
+import { createPages } from "@/lib/db/pages";
+import { createId } from "@/lib/db/utils";
+import { deleteBookDirectory, copyImageToBook } from "@/lib/storage/files";
+import type { BookLanguage } from "@/types/common";
+
+const LANGUAGE_OPTIONS: {
+  label: string;
+  value: BookLanguage;
+}[] = [
+  { label: "中文", value: "zh" },
+  { label: "英文", value: "en" },
+];
+
+type PendingPageImage = {
+  id: string;
+  uri: string;
+  fileName: string | null;
+  width: number;
+  height: number;
+};
+
+function normalizePickedAssets(
+  assets: ImagePicker.ImagePickerAsset[]
+): PendingPageImage[] {
+  return assets.map((asset) => ({
+    id: createId("import"),
+    uri: asset.uri,
+    fileName: asset.fileName ?? null,
+    width: asset.width,
+    height: asset.height,
+  }));
+}
 
 export default function NewBookScreen() {
+  const [title, setTitle] = useState("");
+  const [language, setLanguage] = useState<BookLanguage>("zh");
+  const [titleError, setTitleError] = useState<string | null>(null);
+  const [pendingImages, setPendingImages] = useState<PendingPageImage[]>([]);
+  const [isPickingImages, setIsPickingImages] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+
+  const trimmedTitle = title.trim();
+  const pageCount = pendingImages.length;
+  const canSave = trimmedTitle.length > 0 && !isSaving;
+
+  async function handlePickImages() {
+    if (isPickingImages || isSaving) {
+      return;
+    }
+
+    try {
+      setIsPickingImages(true);
+
+      if (Platform.OS !== "web") {
+        const permission =
+          await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+        if (!permission.granted) {
+          Alert.alert("需要相册权限", "请允许访问相册后再导入绘本页面图片。");
+          return;
+        }
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        allowsMultipleSelection: true,
+        selectionLimit: 0,
+        orderedSelection: true,
+        quality: 1,
+      });
+
+      if (result.canceled || result.assets.length === 0) {
+        return;
+      }
+
+      setPendingImages((current) => [
+        ...current,
+        ...normalizePickedAssets(result.assets),
+      ]);
+    } catch (error) {
+      console.error("Failed to pick images", error);
+      Alert.alert("导入失败", "页面图片导入未完成，请稍后重试。");
+    } finally {
+      setIsPickingImages(false);
+    }
+  }
+
+  function handleRemovePendingImage(id: string) {
+    setPendingImages((current) => current.filter((item) => item.id !== id));
+  }
+
+  async function handleSave() {
+    if (!trimmedTitle) {
+      setTitleError("请输入绘本名称");
+      return;
+    }
+
+    let createdBookId: string | null = null;
+
+    try {
+      setIsSaving(true);
+      setTitleError(null);
+
+      const book = await createBook({
+        title: trimmedTitle,
+        language,
+        pageCount,
+      });
+      createdBookId = book.id;
+
+      if (pageCount > 0) {
+        const pageInputs = await Promise.all(
+          pendingImages.map(async (item, index) => {
+            const pageId = createId("page");
+            const imagePath = await copyImageToBook({
+              bookId: book.id,
+              pageId,
+              sourceUri: item.uri,
+            });
+
+            return {
+              id: pageId,
+              bookId: book.id,
+              pageIndex: index,
+              imagePath,
+            };
+          })
+        );
+
+        await createPages(pageInputs);
+
+        await updateBook(book.id, {
+          coverPageId: pageInputs[0]?.id ?? null,
+          pageCount,
+        });
+      }
+
+      router.replace(`/books/${book.id}`);
+    } catch (error) {
+      console.error("Failed to create book", error);
+
+      if (createdBookId) {
+        await Promise.allSettled([
+          deleteBook(createdBookId),
+          deleteBookDirectory(createdBookId),
+        ]);
+      }
+
+      Alert.alert("保存失败", "绘本保存未完成，请稍后重试。");
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>新建绘本</Text>
-      <Text style={styles.description}>
-        这里将承载绘本名称、语言选择和页面图片导入表单。
-      </Text>
-      <Link href="/" style={styles.link}>
-        返回首页
-      </Link>
-    </View>
+    <SafeAreaView style={styles.safeArea}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        style={styles.keyboardAvoidingView}
+      >
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.formCard}>
+            <View style={styles.section}>
+              <Text style={styles.label}>
+                书名 <Text style={styles.requiredMark}>*</Text>
+              </Text>
+              <TextInput
+                placeholder="请输入绘本名称"
+                placeholderTextColor="#c0c7d4"
+                style={[
+                  styles.textInput,
+                  titleError ? styles.textInputError : null,
+                ]}
+                value={title}
+                onChangeText={(value) => {
+                  setTitle(value);
+
+                  if (titleError && value.trim()) {
+                    setTitleError(null);
+                  }
+                }}
+                onBlur={() => {
+                  if (!title.trim()) {
+                    setTitleError("请输入绘本名称");
+                  }
+                }}
+                maxLength={80}
+                returnKeyType="done"
+              />
+              {titleError ? (
+                <Text style={styles.errorText}>{titleError}</Text>
+              ) : null}
+            </View>
+
+            <View style={styles.section}>
+              <Text style={styles.label}>
+                绘本语言 <Text style={styles.requiredMark}>*</Text>
+              </Text>
+              <View style={styles.languageRow}>
+                {LANGUAGE_OPTIONS.map((option) => {
+                  const selected = option.value === language;
+
+                  return (
+                    <Pressable
+                      key={option.value}
+                      style={[
+                        styles.languageButton,
+                        selected ? styles.languageButtonSelected : null,
+                      ]}
+                      onPress={() => setLanguage(option.value)}
+                    >
+                      <Text
+                        style={[
+                          styles.languageButtonText,
+                          selected ? styles.languageButtonTextSelected : null,
+                        ]}
+                      >
+                        {option.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+              <Text style={styles.helperText}>默认已选中文，可随时切换。</Text>
+            </View>
+
+            <View style={styles.section}>
+              <Text style={styles.label}>导入页面图片</Text>
+              <View style={styles.importCard}>
+                <Pressable
+                  style={[
+                    styles.importButton,
+                    isPickingImages ? styles.importButtonDisabled : null,
+                  ]}
+                  onPress={() => {
+                    void handlePickImages();
+                  }}
+                  disabled={isPickingImages || isSaving}
+                >
+                  <Ionicons name="images-outline" size={18} color="#5a88d9" />
+                  <Text style={styles.importButtonText}>
+                    {isPickingImages ? "导入中..." : "从相册导入"}
+                  </Text>
+                </Pressable>
+                <Text style={styles.importHint}>
+                  支持多选，选择顺序会作为页面顺序保存。
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.section}>
+              <View style={styles.importedHeader}>
+                <Text style={styles.label}>已导入页面（按选择顺序）</Text>
+                <Text style={styles.importedCount}>共 {pageCount} 页</Text>
+              </View>
+
+              {pageCount === 0 ? (
+                <View style={styles.emptyPagesCard}>
+                  <Ionicons
+                    name="albums-outline"
+                    size={20}
+                    color="#c7ad8d"
+                  />
+                  <Text style={styles.emptyPagesText}>
+                    尚未导入页面图片，可一次选择多张。
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.pagesList}>
+                  {pendingImages.map((item, index) => (
+                    <View key={item.id} style={styles.pageRow}>
+                      <Ionicons
+                        name="reorder-three-outline"
+                        size={20}
+                        color="#b79f85"
+                      />
+                      <Image
+                        source={{ uri: item.uri }}
+                        style={styles.pageThumbnail}
+                        contentFit="cover"
+                      />
+                      <View style={styles.pageRowMeta}>
+                        <Text numberOfLines={1} style={styles.pageFileName}>
+                          {item.fileName ?? `页面 ${index + 1}`}
+                        </Text>
+                        <Text style={styles.pageSubText}>
+                          {item.width} × {item.height}
+                        </Text>
+                      </View>
+                      <View style={styles.pageIndexBadge}>
+                        <Text style={styles.pageIndexText}>{index + 1}</Text>
+                      </View>
+                      <Pressable
+                        hitSlop={8}
+                        style={styles.deleteButton}
+                        onPress={() => handleRemovePendingImage(item.id)}
+                        disabled={isSaving}
+                      >
+                        <Ionicons
+                          name="trash-outline"
+                          size={18}
+                          color="#b67b4c"
+                        />
+                      </Pressable>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </View>
+          </View>
+
+          <Pressable
+            style={[
+              styles.saveButton,
+              canSave ? null : styles.saveButtonDisabled,
+            ]}
+            onPress={() => {
+              void handleSave();
+            }}
+            disabled={!canSave}
+          >
+            <Text style={styles.saveButtonText}>
+              {isSaving ? "保存中..." : "保存绘本"}
+            </Text>
+          </Pressable>
+
+          <Text style={styles.footerHint}>
+            {pageCount > 0
+              ? "保存时会把已选图片复制到本地私有目录，并为每张图创建页面记录。"
+              : "可先保存基础信息，也可先导入多张页面图片后再保存。"}
+          </Text>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  safeArea: {
     flex: 1,
-    padding: 24,
+    backgroundColor: "#f7f2e9",
+  },
+  keyboardAvoidingView: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 32,
+  },
+  formCard: {
+    borderRadius: 28,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 20,
+    backgroundColor: "#fffdf9",
+    shadowColor: "#b78758",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.08,
+    shadowRadius: 24,
+    elevation: 4,
+  },
+  section: {
+    marginTop: 8,
+  },
+  label: {
+    marginBottom: 10,
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#3f2d1f",
+  },
+  requiredMark: {
+    color: "#e06b2d",
+  },
+  textInput: {
+    height: 48,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#e7ddcf",
+    paddingHorizontal: 14,
+    backgroundColor: "#fff",
+    fontSize: 16,
+    color: "#2f241a",
+  },
+  textInputError: {
+    borderColor: "#d85d43",
+  },
+  errorText: {
+    marginTop: 8,
+    fontSize: 13,
+    color: "#d85d43",
+  },
+  languageRow: {
+    flexDirection: "row",
     gap: 12,
+  },
+  languageButton: {
+    flex: 1,
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#e7ddcf",
     backgroundColor: "#fff",
   },
-  title: {
-    fontSize: 24,
-    fontWeight: "700",
-    color: "#111827",
+  languageButtonSelected: {
+    borderColor: "#ea7e33",
+    backgroundColor: "#fff4eb",
   },
-  description: {
-    fontSize: 16,
-    lineHeight: 24,
-    color: "#4b5563",
-  },
-  link: {
-    marginTop: 8,
-    color: "#2563eb",
+  languageButtonText: {
     fontSize: 16,
     fontWeight: "600",
+    color: "#4f4a43",
+  },
+  languageButtonTextSelected: {
+    color: "#a95516",
+  },
+  helperText: {
+    marginTop: 8,
+    fontSize: 13,
+    color: "#8e7b69",
+  },
+  importCard: {
+    borderRadius: 18,
+    padding: 14,
+    backgroundColor: "#fffaf2",
+    borderWidth: 1,
+    borderColor: "#f1e3cd",
+  },
+  importButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    minHeight: 48,
+    borderRadius: 12,
+    backgroundColor: "#edf4ff",
+  },
+  importButtonDisabled: {
+    opacity: 0.7,
+  },
+  importButtonText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#4f78c8",
+  },
+  importHint: {
+    marginTop: 10,
+    textAlign: "center",
+    fontSize: 13,
+    color: "#9c8c7d",
+  },
+  importedHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  importedCount: {
+    marginBottom: 10,
+    fontSize: 14,
+    color: "#8e7b69",
+  },
+  emptyPagesCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#f1e3cd",
+    paddingHorizontal: 14,
+    paddingVertical: 16,
+    backgroundColor: "#fffaf2",
+  },
+  emptyPagesText: {
+    flex: 1,
+    fontSize: 14,
+    lineHeight: 20,
+    color: "#9c8c7d",
+  },
+  pagesList: {
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "#f1e3cd",
+    overflow: "hidden",
+    backgroundColor: "#fffefb",
+  },
+  pageRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    minHeight: 84,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: "#f5ead9",
+  },
+  pageThumbnail: {
+    width: 68,
+    height: 52,
+    borderRadius: 10,
+    backgroundColor: "#efe4d3",
+  },
+  pageRowMeta: {
+    flex: 1,
+    gap: 4,
+  },
+  pageFileName: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#433324",
+  },
+  pageSubText: {
+    fontSize: 12,
+    color: "#9c8c7d",
+  },
+  pageIndexBadge: {
+    minWidth: 30,
+    height: 30,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#e8d9c3",
+    backgroundColor: "#fff",
+  },
+  pageIndexText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#6e5840",
+  },
+  deleteButton: {
+    width: 32,
+    height: 32,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 10,
+  },
+  saveButton: {
+    marginTop: 20,
+    minHeight: 52,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 16,
+    backgroundColor: "#f08b33",
+    shadowColor: "#f08b33",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    elevation: 4,
+  },
+  saveButtonDisabled: {
+    backgroundColor: "#edc7a4",
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  saveButtonText: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#fff",
+  },
+  footerHint: {
+    marginTop: 12,
+    textAlign: "center",
+    fontSize: 13,
+    lineHeight: 20,
+    color: "#8f7d6d",
   },
 });

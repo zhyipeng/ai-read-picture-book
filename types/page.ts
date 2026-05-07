@@ -19,6 +19,7 @@ export type Page = {
 };
 
 export type CreatePageInput = {
+  id?: string;
   bookId: string;
   pageIndex: number;
   imagePath: string;
