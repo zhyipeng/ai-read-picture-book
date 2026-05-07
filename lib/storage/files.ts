@@ -11,6 +11,7 @@ import {
   getPageImagePath,
 } from "@/lib/storage/paths";
 import {
+  deleteWebImageByPath,
   deleteWebImagesByBookId,
   getWebImageObjectUrl,
   isWebImageUri,
@@ -114,6 +115,11 @@ export async function writeAudioToPage(params: {
 }
 
 export async function deleteFileIfExists(filePath: string): Promise<void> {
+  if (isWebImageUri(filePath)) {
+    await deleteWebImageByPath(filePath);
+    return;
+  }
+
   const info = await FileSystem.getInfoAsync(filePath);
 
   if (!info.exists) {

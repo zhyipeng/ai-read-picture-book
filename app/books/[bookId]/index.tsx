@@ -15,9 +15,14 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { ActionButton } from "@/components/ActionButton";
-import { getBookById } from "@/lib/db/books";
+import { AppHeaderIconButton, AppHeaderSpacer } from "@/components/AppHeader";
+import { Dialog } from "@/components/Dialog";
+import { deleteBook, getBookById } from "@/lib/db/books";
 import { listPagesByBookId } from "@/lib/db/pages";
-import { getPersistedImageUri } from "@/lib/storage/files";
+import {
+  deleteBookDirectory,
+  getPersistedImageUri,
+} from "@/lib/storage/files";
 import type { Book } from "@/types/book";
 import type { Page } from "@/types/page";
 
@@ -331,6 +336,9 @@ export default function BookDetailScreen() {
   const [pageLayoutMode, setPageLayoutMode] = useState<PageLayoutMode>("grid");
   const [isLoading, setIsLoading] = useState(true);
   const [errorText, setErrorText] = useState<string | null>(null);
+  const [isMenuVisible, setIsMenuVisible] = useState(false);
+  const [isDeleteDialogVisible, setIsDeleteDialogVisible] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   function cleanupResolvedImages() {
     revokeHandlersRef.current.forEach((revoke) => revoke());
@@ -342,6 +350,13 @@ export default function BookDetailScreen() {
       cleanupResolvedImages();
     };
   }, []);
+
+  useEffect(() => {
+    if (!isFocused) {
+      setIsMenuVisible(false);
+      setIsDeleteDialogVisible(false);
+    }
+  }, [isFocused]);
 
   useEffect(() => {
     if (!bookId || !isFocused) {
@@ -460,10 +475,62 @@ export default function BookDetailScreen() {
     Alert.alert("功能待接入", message);
   }
 
+  function handleOpenEdit() {
+    if (!book) {
+      return;
+    }
+
+    setIsMenuVisible(false);
+    router.push(`/books/${book.id}/edit`);
+  }
+
+  function handleOpenDeleteDialog() {
+    setIsMenuVisible(false);
+    setIsDeleteDialogVisible(true);
+  }
+
+  async function handleConfirmDelete() {
+    if (!book || isDeleting) {
+      return;
+    }
+
+    try {
+      setIsDeleting(true);
+
+      const [deleteBookResult, deleteDirectoryResult] = await Promise.allSettled([
+        deleteBook(book.id),
+        deleteBookDirectory(book.id),
+      ]);
+
+      if (deleteBookResult.status === "rejected") {
+        throw deleteBookResult.reason;
+      }
+
+      if (deleteDirectoryResult.status === "rejected") {
+        console.error(
+          "Failed to delete book directory",
+          deleteDirectoryResult.reason
+        );
+      }
+
+      setIsDeleteDialogVisible(false);
+      router.replace("/");
+    } catch (error) {
+      console.error("Failed to delete book", error);
+      Alert.alert("删除失败", "绘本删除未完成，请稍后重试。");
+    } finally {
+      setIsDeleting(false);
+    }
+  }
+
   if (isLoading) {
     return (
-      <SafeAreaView style={styles.safeArea}>
-        <Stack.Screen options={{ headerShown: false }} />
+      <SafeAreaView style={styles.safeArea} edges={["left", "right", "bottom"]}>
+        <Stack.Screen
+          options={{
+            headerRight: () => <AppHeaderSpacer />,
+          }}
+        />
         <View style={styles.centerState}>
           <ActivityIndicator size="large" color="#5E84D1" />
           <Text style={styles.stateText}>正在加载绘本详情...</Text>
@@ -474,8 +541,12 @@ export default function BookDetailScreen() {
 
   if (!book || errorText) {
     return (
-      <SafeAreaView style={styles.safeArea}>
-        <Stack.Screen options={{ headerShown: false }} />
+      <SafeAreaView style={styles.safeArea} edges={["left", "right", "bottom"]}>
+        <Stack.Screen
+          options={{
+            headerRight: () => <AppHeaderSpacer />,
+          }}
+        />
         <View style={styles.centerState}>
           <Ionicons name="book-outline" size={34} color="#9E907F" />
           <Text style={styles.stateTitle}>绘本暂不可用</Text>
@@ -492,25 +563,22 @@ export default function BookDetailScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={["top", "left", "right", "bottom"]}>
-      <Stack.Screen options={{ headerShown: false }} />
+    <SafeAreaView style={styles.safeArea} edges={["left", "right", "bottom"]}>
+      <Stack.Screen
+        options={{
+          headerRight: () => (
+            <AppHeaderIconButton
+              iconName="ellipsis-horizontal"
+              onPress={() => setIsMenuVisible(true)}
+            />
+          ),
+        }}
+      />
       <View style={styles.screen}>
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          <View style={styles.header}>
-            <Pressable style={styles.headerButton} onPress={() => router.back()}>
-              <Ionicons name="chevron-back" size={22} color="#473B31" />
-            </Pressable>
-            <Pressable
-              style={styles.headerButton}
-              onPress={() => showPendingAction("绘本更多操作稍后补上。")}
-            >
-              <Ionicons name="ellipsis-horizontal" size={20} color="#473B31" />
-            </Pressable>
-          </View>
-
           <View style={styles.heroCard}>
             {coverUri ? (
               <Image
@@ -792,7 +860,47 @@ export default function BookDetailScreen() {
             </Pressable>
           </View>
         </View>
+
+        {isMenuVisible ? (
+          <View style={styles.menuOverlay}>
+            <Pressable
+              style={styles.menuBackdrop}
+              onPress={() => setIsMenuVisible(false)}
+            />
+            <View style={styles.menuCard}>
+              <Pressable style={styles.menuItem} onPress={handleOpenEdit}>
+                <Ionicons name="create-outline" size={18} color="#4A4037" />
+                <Text style={styles.menuItemText}>编辑</Text>
+              </Pressable>
+              <View style={styles.menuDivider} />
+              <Pressable style={styles.menuItem} onPress={handleOpenDeleteDialog}>
+                <Ionicons name="trash-outline" size={18} color="#B14D35" />
+                <Text style={styles.menuItemDangerText}>删除</Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : null}
       </View>
+
+      <Dialog
+        visible={isDeleteDialogVisible}
+        title="删除绘本"
+        message={`确认删除《${book.title}》吗？这会同时移除绘本记录、页面图片和已生成音频。`}
+        confirmText={isDeleting ? "删除中..." : "删除"}
+        cancelText="取消"
+        onConfirm={() => {
+          void handleConfirmDelete();
+        }}
+        onCancel={() => {
+          if (isDeleting) {
+            return;
+          }
+
+          setIsDeleteDialogVisible(false);
+        }}
+        confirmDisabled={isDeleting}
+        cancelDisabled={isDeleting}
+      />
     </SafeAreaView>
   );
 }
@@ -804,6 +912,51 @@ const styles = StyleSheet.create({
   },
   screen: {
     flex: 1,
+  },
+  menuOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 20,
+  },
+  menuBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  menuCard: {
+    position: "absolute",
+    top: 12,
+    right: 18,
+    width: 132,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#EADFD2",
+    backgroundColor: "#FFFDF9",
+    paddingVertical: 6,
+    shadowColor: "#8A725A",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.12,
+    shadowRadius: 18,
+    elevation: 8,
+  },
+  menuItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  menuItemText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#4A4037",
+  },
+  menuItemDangerText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#B14D35",
+  },
+  menuDivider: {
+    marginHorizontal: 12,
+    height: 1,
+    backgroundColor: "#EFE4D8",
   },
   scrollContent: {
     paddingHorizontal: 18,
@@ -838,20 +991,6 @@ const styles = StyleSheet.create({
   backHomeButtonText: {
     color: "#FFFFFF",
     fontSize: 15,
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingTop: 2,
-    paddingBottom: 14,
-  },
-  headerButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: "center",
-    justifyContent: "center",
   },
   heroCard: {
     flexDirection: "row",

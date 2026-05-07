@@ -154,3 +154,19 @@ export async function deleteWebImagesByBookId(bookId: string): Promise<void> {
       reject(transaction.error ?? new Error("Web image deletion was aborted."));
   });
 }
+
+export async function deleteWebImageByPath(imagePath: string): Promise<void> {
+  const database = await openWebImageDatabase();
+  const transaction = database.transaction(WEB_IMAGE_STORE_NAME, "readwrite");
+  const store = transaction.objectStore(WEB_IMAGE_STORE_NAME);
+
+  await waitForRequest(store.delete(parseWebImageUri(imagePath)));
+
+  await new Promise<void>((resolve, reject) => {
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () =>
+      reject(transaction.error ?? new Error("Failed to finalize web image deletion."));
+    transaction.onabort = () =>
+      reject(transaction.error ?? new Error("Web image deletion was aborted."));
+  });
+}
