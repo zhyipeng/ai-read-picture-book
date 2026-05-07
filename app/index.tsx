@@ -1,20 +1,25 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useIsFocused } from "@react-navigation/native";
 import { Image } from "expo-image";
-import { Link } from "expo-router";
-import { useEffect, useState } from "react";
+import { Link, router } from "expo-router";
+import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { listBooks } from "@/lib/db/books";
-import { getPersistedImageUri } from "@/lib/storage/files";
+import { deleteBook, listBooks } from "@/lib/db/books";
+import {
+  deleteBookDirectory,
+  getPersistedImageUri,
+} from "@/lib/storage/files";
 import type { Book } from "@/types/book";
 
 type BookCardTheme = {
@@ -27,6 +32,12 @@ type BookCardTheme = {
 type BookCardItem = Book & {
   coverUri: string | null;
   theme: BookCardTheme;
+};
+
+type CardMenuState = {
+  anchorX: number;
+  anchorY: number;
+  book: BookCardItem;
 };
 
 const CARD_THEMES: BookCardTheme[] = [
@@ -122,65 +133,133 @@ function BookCoverFallback({
   );
 }
 
-function BookCard({ item }: { item: BookCardItem }) {
+function BookCard({
+  item,
+  onOpenMenu,
+}: {
+  item: BookCardItem;
+  onOpenMenu: (book: BookCardItem, anchorX: number, anchorY: number) => void;
+}) {
+  const suppressNextPressRef = useRef(false);
   const languageLabel = getLanguageLabel(item.language);
   const pageCountText = `${item.pageCount} 页`;
   const updatedAtText = formatUpdatedAt(item.updatedAt);
 
   return (
-    <Link href={`/books/${item.id}`} asChild>
-      <Pressable style={styles.card}>
-        {item.coverUri ? (
-          <Image
-            source={{ uri: item.coverUri }}
-            style={styles.coverImage}
-            contentFit="cover"
-          />
-        ) : (
-          <BookCoverFallback
-            theme={item.theme.fallbackTheme}
-            accentColor={item.theme.accentColor}
-          />
-        )}
+    <Pressable
+      style={styles.card}
+      onPress={() => {
+        if (suppressNextPressRef.current) {
+          suppressNextPressRef.current = false;
+          return;
+        }
 
-        <View style={styles.cardBody}>
-          <View style={styles.cardHeader}>
-            <Text numberOfLines={2} style={styles.cardTitle}>
-              {item.title}
-            </Text>
-            <Ionicons name="chevron-forward" size={18} color="#8b7d6f" />
-          </View>
+        router.push(`/books/${item.id}`);
+      }}
+      onLongPress={(event) => {
+        suppressNextPressRef.current = true;
+        onOpenMenu(item, event.nativeEvent.pageX, event.nativeEvent.pageY);
+      }}
+      delayLongPress={260}
+    >
+      {item.coverUri ? (
+        <Image
+          source={{ uri: item.coverUri }}
+          style={styles.coverImage}
+          contentFit="cover"
+        />
+      ) : (
+        <BookCoverFallback
+          theme={item.theme.fallbackTheme}
+          accentColor={item.theme.accentColor}
+        />
+      )}
 
-          <View style={styles.metaRow}>
-            <View
+      <View style={styles.cardBody}>
+        <View style={styles.cardHeader}>
+          <Text numberOfLines={2} style={styles.cardTitle}>
+            {item.title}
+          </Text>
+          <Pressable
+            hitSlop={8}
+            style={styles.moreButton}
+            onPress={(event) => {
+              event.stopPropagation();
+              onOpenMenu(item, event.nativeEvent.pageX, event.nativeEvent.pageY);
+            }}
+          >
+            <Ionicons name="ellipsis-horizontal" size={18} color="#8b7d6f" />
+          </Pressable>
+        </View>
+
+        <View style={styles.metaRow}>
+          <View
+            style={[
+              styles.languageTag,
+              { backgroundColor: item.theme.languageBackground },
+            ]}
+          >
+            <Text
               style={[
-                styles.languageTag,
-                { backgroundColor: item.theme.languageBackground },
+                styles.languageTagText,
+                { color: item.theme.languageColor },
               ]}
             >
-              <Text
-                style={[
-                  styles.languageTagText,
-                  { color: item.theme.languageColor },
-                ]}
-              >
-                {languageLabel}
-              </Text>
-            </View>
-            <Text style={styles.pageCount}>{pageCountText}</Text>
-          </View>
-
-          <Text style={styles.metaHint}>{updatedAtText}</Text>
-
-          <View style={styles.statusRow}>
-            <Ionicons name="images-outline" size={14} color="#9c8c7d" />
-            <Text style={styles.statusText}>
-              {item.coverImagePath ? "已设置封面" : "未设置封面"}
+              {languageLabel}
             </Text>
           </View>
+          <Text style={styles.pageCount}>{pageCountText}</Text>
         </View>
-      </Pressable>
-    </Link>
+
+        <Text style={styles.metaHint}>{updatedAtText}</Text>
+
+        <View style={styles.statusRow}>
+          <Ionicons name="images-outline" size={14} color="#9c8c7d" />
+          <Text style={styles.statusText}>
+            {item.coverImagePath ? "已设置封面" : "未设置封面"}
+          </Text>
+        </View>
+      </View>
+    </Pressable>
+  );
+}
+
+function CardMenu({
+  menuState,
+  isDeleting,
+  onClose,
+  onDelete,
+}: {
+  menuState: CardMenuState;
+  isDeleting: boolean;
+  onClose: () => void;
+  onDelete: (book: BookCardItem) => void;
+}) {
+  const { width, height } = useWindowDimensions();
+  const menuWidth = 164;
+  const horizontalPadding = 12;
+  const menuLeft = Math.min(
+    Math.max(horizontalPadding, menuState.anchorX - menuWidth + 16),
+    width - menuWidth - horizontalPadding
+  );
+  const menuTop = Math.min(menuState.anchorY + 10, height - 88);
+
+  return (
+    <View style={styles.menuOverlay}>
+      <Pressable style={styles.menuBackdrop} onPress={onClose} />
+      <View style={[styles.menuCard, { top: menuTop, left: menuLeft }]}>
+        <Pressable
+          style={styles.menuItem}
+          onPress={() => onDelete(menuState.book)}
+          disabled={isDeleting}
+        >
+          <Ionicons name="trash-outline" size={16} color="#b14d35" />
+          <Text style={styles.menuItemDeleteText}>
+            {isDeleting ? "删除中..." : "删除绘本"}
+          </Text>
+        </Pressable>
+      </View>
+    </View>
   );
 }
 
@@ -210,6 +289,9 @@ export default function Index() {
   const [books, setBooks] = useState<BookCardItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorText, setErrorText] = useState<string | null>(null);
+  const [menuState, setMenuState] = useState<CardMenuState | null>(null);
+  const [deletingBookId, setDeletingBookId] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     if (!isFocused) {
@@ -283,7 +365,66 @@ export default function Index() {
       active = false;
       revokers.forEach((revoke) => revoke());
     };
-  }, [isFocused]);
+  }, [isFocused, reloadKey]);
+
+  function handleOpenMenu(
+    book: BookCardItem,
+    anchorX: number,
+    anchorY: number
+  ) {
+    setMenuState({
+      book,
+      anchorX,
+      anchorY,
+    });
+  }
+
+  function handleCloseMenu() {
+    setMenuState(null);
+  }
+
+  function handleDeleteMenuPress(book: BookCardItem) {
+    setMenuState(null);
+
+    Alert.alert(
+      "删除绘本",
+      `确定删除《${book.title}》吗？删除后不可恢复。`,
+      [
+        {
+          text: "取消",
+          style: "cancel",
+        },
+        {
+          text: "删除",
+          style: "destructive",
+          onPress: () => {
+            void handleConfirmDelete(book);
+          },
+        },
+      ]
+    );
+  }
+
+  async function handleConfirmDelete(book: BookCardItem) {
+    try {
+      setDeletingBookId(book.id);
+
+      await deleteBook(book.id);
+
+      try {
+        await deleteBookDirectory(book.id);
+      } catch (cleanupError) {
+        console.error("Failed to clean book files", cleanupError);
+      }
+
+      setReloadKey((current) => current + 1);
+    } catch (error) {
+      console.error("Failed to delete book", error);
+      Alert.alert("删除失败", "绘本删除未完成，请稍后重试。");
+    } finally {
+      setDeletingBookId(null);
+    }
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -320,13 +461,26 @@ export default function Index() {
           ) : books.length > 0 ? (
             <View style={styles.listSection}>
               {books.map((item) => (
-                <BookCard key={item.id} item={item} />
+                <BookCard
+                  key={item.id}
+                  item={item}
+                  onOpenMenu={handleOpenMenu}
+                />
               ))}
             </View>
           ) : (
             <EmptyStateCard />
           )}
         </ScrollView>
+
+        {menuState ? (
+          <CardMenu
+            menuState={menuState}
+            isDeleting={deletingBookId === menuState.book.id}
+            onClose={handleCloseMenu}
+            onDelete={handleDeleteMenuPress}
+          />
+        ) : null}
       </View>
     </SafeAreaView>
   );
@@ -631,6 +785,13 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#1f2937",
   },
+  moreButton: {
+    width: 28,
+    height: 28,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 10,
+  },
   metaRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -664,6 +825,40 @@ const styles = StyleSheet.create({
   statusText: {
     fontSize: 13,
     color: "#4b5563",
+  },
+  menuOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 20,
+  },
+  menuBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "transparent",
+  },
+  menuCard: {
+    position: "absolute",
+    width: 164,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#efe0d2",
+    backgroundColor: "#fffdf9",
+    shadowColor: "#9f8365",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.16,
+    shadowRadius: 20,
+    elevation: 6,
+  },
+  menuItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    minHeight: 46,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  menuItemDeleteText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#b14d35",
   },
   emptyCard: {
     marginTop: 16,
