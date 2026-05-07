@@ -20,6 +20,11 @@ import { PreviewImage } from "@/components/PreviewImage";
 import { deleteBook, getBookById } from "@/lib/db/books";
 import { listPagesByBookId } from "@/lib/db/pages";
 import {
+  generateBookAudio,
+  generateBookText,
+  getGenerationProviderName,
+} from "@/lib/services/generation";
+import {
   deleteBookDirectory,
   getPersistedImageUri,
 } from "@/lib/storage/files";
@@ -339,6 +344,9 @@ export default function BookDetailScreen() {
   const [isMenuVisible, setIsMenuVisible] = useState(false);
   const [isDeleteDialogVisible, setIsDeleteDialogVisible] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [isGeneratingBookText, setIsGeneratingBookText] = useState(false);
+  const [isGeneratingBookAudio, setIsGeneratingBookAudio] = useState(false);
 
   function cleanupResolvedImages() {
     revokeHandlersRef.current.forEach((revoke) => revoke());
@@ -453,7 +461,7 @@ export default function BookDetailScreen() {
     return () => {
       isCancelled = true;
     };
-  }, [bookId, isFocused]);
+  }, [bookId, isFocused, refreshKey]);
 
   const pageCount = Math.max(book?.pageCount ?? 0, pages.length);
   const generatedPageCount = getGeneratedPageCount(pages);
@@ -473,6 +481,60 @@ export default function BookDetailScreen() {
 
   function showPendingAction(message: string) {
     Alert.alert("功能待接入", message);
+  }
+
+  async function handleGenerateBookText() {
+    if (!book || pages.length === 0 || isGeneratingBookText) {
+      return;
+    }
+
+    try {
+      setIsGeneratingBookText(true);
+
+      const result = await generateBookText({
+        book,
+        pages,
+      });
+
+      setRefreshKey((value) => value + 1);
+      Alert.alert(
+        "生成完成",
+        `已通过 ${getGenerationProviderName()} provider 为 ${result.generatedCount} 页生成文本。`
+      );
+    } catch (error) {
+      console.error("Failed to generate book text", error);
+      Alert.alert("生成失败", "整本文本生成未完成，请稍后重试。");
+    } finally {
+      setIsGeneratingBookText(false);
+    }
+  }
+
+  async function handleGenerateBookAudio() {
+    if (!book || pages.length === 0 || isGeneratingBookAudio) {
+      return;
+    }
+
+    try {
+      setIsGeneratingBookAudio(true);
+
+      const result = await generateBookAudio({
+        book,
+        pages,
+      });
+
+      setRefreshKey((value) => value + 1);
+      Alert.alert(
+        "生成完成",
+        result.skippedCount > 0
+          ? `已通过 ${getGenerationProviderName()} provider 为 ${result.generatedCount} 页生成语音，跳过 ${result.skippedCount} 页未生成文本的页面。`
+          : `已通过 ${getGenerationProviderName()} provider 为 ${result.generatedCount} 页生成语音。`
+      );
+    } catch (error) {
+      console.error("Failed to generate book audio", error);
+      Alert.alert("生成失败", "整本语音生成未完成，请稍后重试。");
+    } finally {
+      setIsGeneratingBookAudio(false);
+    }
   }
 
   function handleOpenEdit() {
@@ -628,10 +690,16 @@ export default function BookDetailScreen() {
               iconBackgroundColor="#E9F0FF"
               borderColor="#C9D8FF"
               backgroundColor="#F6F9FF"
-              title="生成整本内容"
-              subtitle="（文本 + 插图 + 朗读文本）"
-              disabled={pages.length === 0}
-              onPress={() => showPendingAction("整本内容生成流程尚未接入。")}
+              title={isGeneratingBookText ? "生成中..." : "生成整本内容"}
+              subtitle={
+                isGeneratingBookText
+                  ? "正在批量填充原文、画面描述和朗读文本"
+                  : "（文本 + 插图 + 朗读文本）"
+              }
+              disabled={pages.length === 0 || isGeneratingBookText || isGeneratingBookAudio}
+              onPress={() => {
+                void handleGenerateBookText();
+              }}
             />
             <DetailActionCard
               iconName="mic"
@@ -639,14 +707,18 @@ export default function BookDetailScreen() {
               iconBackgroundColor="#E6F4E9"
               borderColor="#CAE4CE"
               backgroundColor="#F6FBF7"
-              title="生成整本语音"
+              title={isGeneratingBookAudio ? "生成中..." : "生成整本语音"}
               subtitle={
-                audioReadyCount > 0
+                isGeneratingBookAudio
+                  ? "正在批量生成朗读语音"
+                  : audioReadyCount > 0
                   ? `已为 ${audioReadyCount} 页生成语音`
                   : "为已生成文本的页面"
               }
-              disabled={pages.length === 0}
-              onPress={() => showPendingAction("整本语音生成流程尚未接入。")}
+              disabled={pages.length === 0 || isGeneratingBookText || isGeneratingBookAudio}
+              onPress={() => {
+                void handleGenerateBookAudio();
+              }}
             />
             <DetailActionCard
               iconName="play"

@@ -18,6 +18,11 @@ import { PreviewImage } from "@/components/PreviewImage";
 import { getBookById } from "@/lib/db/books";
 import { getModelConfigById } from "@/lib/db/modelConfigs";
 import { getPageById, listPagesByBookId } from "@/lib/db/pages";
+import {
+  generatePageAudio,
+  generatePageText,
+  getGenerationProviderName,
+} from "@/lib/services/generation";
 import { getAppSettings } from "@/lib/db/settings";
 import { getPersistedImageUri } from "@/lib/storage/files";
 import type { Book } from "@/types/book";
@@ -334,6 +339,9 @@ export default function BookPageDetailScreen() {
   const [activeTab, setActiveTab] = useState<DetailTabKey>("read");
   const [isLoading, setIsLoading] = useState(true);
   const [errorText, setErrorText] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [isGeneratingText, setIsGeneratingText] = useState(false);
+  const [isGeneratingAudio, setIsGeneratingAudio] = useState(false);
 
   function cleanupImageUri() {
     imageRevokeRef.current?.();
@@ -428,7 +436,7 @@ export default function BookPageDetailScreen() {
     return () => {
       isCancelled = true;
     };
-  }, [bookId, pageId, isFocused]);
+  }, [bookId, pageId, isFocused, refreshKey]);
 
   function showPendingAction(title: string, message: string) {
     Alert.alert(title, message);
@@ -518,6 +526,68 @@ export default function BookPageDetailScreen() {
     router.replace(`/books/${book.id}/page/${targetPage.id}`);
   }
 
+  async function handleGenerateText() {
+    if (isGeneratingText) {
+      return;
+    }
+
+    try {
+      setIsGeneratingText(true);
+      await generatePageText({
+        book,
+        page,
+      });
+      setRefreshKey((value) => value + 1);
+      setActiveTab("read");
+      Alert.alert(
+        "生成完成",
+        `已通过 ${getGenerationProviderName()} provider 生成当前页文本。`
+      );
+    } catch (error) {
+      console.error("Failed to generate page text", error);
+      Alert.alert("生成失败", "单页文本生成未完成，请稍后重试。");
+    } finally {
+      setIsGeneratingText(false);
+    }
+  }
+
+  async function handleGenerateAudio() {
+    if (isGeneratingAudio) {
+      return;
+    }
+
+    try {
+      setIsGeneratingAudio(true);
+      await generatePageAudio({
+        book,
+        page,
+      });
+      setRefreshKey((value) => value + 1);
+      Alert.alert(
+        "生成完成",
+        `已通过 ${getGenerationProviderName()} provider 生成当前页语音。`
+      );
+    } catch (error) {
+      console.error("Failed to generate page audio", error);
+      Alert.alert("生成失败", "单页语音生成未完成，请稍后重试。");
+    } finally {
+      setIsGeneratingAudio(false);
+    }
+  }
+
+  async function handleRetry() {
+    if (isGeneratingText || isGeneratingAudio) {
+      return;
+    }
+
+    if (!page.readAloudText.trim() || page.textStatus === "error") {
+      await handleGenerateText();
+      return;
+    }
+
+    await handleGenerateAudio();
+  }
+
   return (
     <SafeAreaView style={styles.safeArea} edges={["left", "right", "bottom"]}>
       <Stack.Screen
@@ -575,26 +645,24 @@ export default function BookPageDetailScreen() {
 
           <View style={styles.actionRow}>
             <ActionChipButton
-              label="生成文本"
+              label={isGeneratingText ? "生成中..." : "生成文本"}
               iconName="sparkles"
               backgroundColor="#4E87DD"
-              onPress={() =>
-                showPendingAction("生成功能待接入", "单页文本生成流程尚未接入。")
-              }
+              disabled={isGeneratingText || isGeneratingAudio}
+              onPress={() => {
+                void handleGenerateText();
+              }}
             />
             <ActionChipButton
-              label="生成语音"
+              label={isGeneratingAudio ? "生成中..." : "生成语音"}
               iconName="volume-medium"
               backgroundColor="#5FB05A"
-              disabled={!page.readAloudText.trim()}
-              onPress={() =>
-                showPendingAction(
-                  "生成功能待接入",
-                  page.readAloudText.trim()
-                    ? "单页语音生成流程尚未接入。"
-                    : "请先生成或填写朗读文本。"
-                )
+              disabled={
+                !page.readAloudText.trim() || isGeneratingText || isGeneratingAudio
               }
+              onPress={() => {
+                void handleGenerateAudio();
+              }}
             />
             <Pressable
               style={({ pressed }) => [
@@ -642,12 +710,16 @@ export default function BookPageDetailScreen() {
                 style={({ pressed }) => [
                   styles.retryButton,
                   pressed ? styles.pressed : null,
+                  isGeneratingText || isGeneratingAudio ? styles.disabled : null,
                 ]}
-                onPress={() =>
-                  showPendingAction("重试功能待接入", "单页失败重试流程尚未接入。")
-                }
+                onPress={() => {
+                  void handleRetry();
+                }}
+                disabled={isGeneratingText || isGeneratingAudio}
               >
-                <Text style={styles.retryButtonText}>重试</Text>
+                <Text style={styles.retryButtonText}>
+                  {isGeneratingText || isGeneratingAudio ? "处理中..." : "重试"}
+                </Text>
               </Pressable>
             </View>
           ) : null}

@@ -28,6 +28,10 @@ async function ensureDirectoryExists(directory: string): Promise<void> {
   await FileSystem.makeDirectoryAsync(directory, { intermediates: true });
 }
 
+function isMockAssetPath(filePath: string): boolean {
+  return filePath.startsWith("mock://");
+}
+
 export async function ensureBookDirectories(bookId: string): Promise<void> {
   await ensureDirectoryExists(getAppStorageRootDirectory());
   await ensureDirectoryExists(getBooksRootDirectory());
@@ -115,6 +119,10 @@ export async function writeAudioToPage(params: {
 }
 
 export async function deleteFileIfExists(filePath: string): Promise<void> {
+  if (isMockAssetPath(filePath)) {
+    return;
+  }
+
   if (isWebImageUri(filePath)) {
     await deleteWebImageByPath(filePath);
     return;
