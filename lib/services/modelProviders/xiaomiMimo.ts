@@ -64,15 +64,21 @@ export const xiaomiMimoModelProvider: ModelProvider = {
   },
   buildTtsRequest({ config, text, voice, speed, responseFormat }) {
     return {
-      url: joinUrl(config.baseUrl, "/audio/speech"),
+      url: joinUrl(config.baseUrl, "/chat/completions"),
       method: "POST",
       headers: buildBearerHeaders(config.apiKeyRef),
       body: JSON.stringify({
         model: config.model,
-        input: text,
-        voice: voice ?? config.voice ?? undefined,
-        speed: speed ?? config.speed ?? undefined,
-        response_format: responseFormat ?? "mp3",
+        messages: [
+          {
+            role: "assistant",
+            content: text,
+          }
+        ],
+        audio: {
+          "format": responseFormat ?? "mp3",
+          "voice": voice ?? config.voice ?? "mimo_default",
+        },
         ...getExtraParams(config.extraParams),
       }),
     };

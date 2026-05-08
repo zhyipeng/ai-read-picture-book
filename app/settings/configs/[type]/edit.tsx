@@ -15,6 +15,7 @@ import {
 } from "react-native";
 
 import { showAlert } from "@/lib/alert";
+import { getModelProvider } from "@/lib/services/modelProviders";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { ActionButton } from "@/components/ActionButton";
@@ -122,6 +123,7 @@ export default function ConfigEditorScreen() {
   const [errors, setErrors] = useState<FieldErrors>({});
   const [fetchedModels, setFetchedModels] = useState<string[]>([]);
   const [isFetchingModels, setIsFetchingModels] = useState(false);
+  const [isTesting, setIsTesting] = useState(false);
   const [showModelSheet, setShowModelSheet] = useState(false);
   const [showVoiceSheet, setShowVoiceSheet] = useState(false);
 
@@ -368,6 +370,77 @@ export default function ConfigEditorScreen() {
     }
   }
 
+  async function handleTestConnection() {
+    if (!validateFields()) {
+      return;
+    }
+
+    setIsTesting(true);
+
+    try {
+      const testConfig: ModelConfig = {
+        id: "",
+        type: resolvedType,
+        provider,
+        name: name.trim(),
+        baseUrl: baseUrl.trim(),
+        apiKeyRef: apiKeyRef.trim(),
+        model: model.trim(),
+        voice: resolvedType === "tts" ? voice.trim() : null,
+        speed: resolvedType === "tts" ? speed : null,
+        extraParams: buildExtraParamsString({ rawText: extraParamsText }),
+        createdAt: "",
+        updatedAt: "",
+      };
+
+      const modelProvider = getModelProvider(provider);
+      let request: { url: string; method: string; headers: Record<string, string>; body: string };
+
+      if (resolvedType === "tts") {
+        if (!modelProvider.buildTtsRequest) {
+          throw new Error(`${modelProvider.label} 暂不支持 TTS 调用。`);
+        }
+        request = modelProvider.buildTtsRequest({
+          config: testConfig,
+          text: "测试。",
+        });
+      } else {
+        if (!modelProvider.buildVisionRequest) {
+          throw new Error(`${modelProvider.label} 暂不支持多模态文本调用。`);
+        }
+        request = modelProvider.buildVisionRequest({
+          config: testConfig,
+          prompt: [{ type: "text", text: "test" }],
+          maxTokens: 1,
+        });
+      }
+
+      const response = await fetch(request.url, {
+        method: request.method,
+        headers: request.headers,
+        body: request.body,
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      showAlert(
+        "测试成功",
+        resolvedType === "tts"
+          ? "TTS 接口返回正常，配置可用。"
+          : "Vision 接口返回正常，配置可用。"
+      );
+    } catch (error) {
+      showAlert(
+        "测试失败",
+        error instanceof Error ? error.message : "无法连接，请检查配置信息。"
+      );
+    } finally {
+      setIsTesting(false);
+    }
+  }
+
   function renderErrorText(message?: string) {
     if (!message) {
       return null;
@@ -488,7 +561,7 @@ export default function ConfigEditorScreen() {
                 {renderErrorText(errors.apiKeyRef)}
               </View>
 
-              {provider === "xiaomi-mimo" && (
+              {apiKeyRef && (
                 <View style={styles.fieldBlock}>
                   <Pressable
                     style={[
@@ -643,11 +716,19 @@ export default function ConfigEditorScreen() {
                 />
               )}
               <ActionButton
+                label={isTesting ? "测试中..." : "测试"}
+                onPress={() => void handleTestConnection()}
+                style={styles.testButton}
+                textStyle={styles.testButtonText}
+                disabled={isTesting || isSaving}
+                disabledStyle={styles.testButtonDisabled}
+              />
+              <ActionButton
                 label={isSaving ? "保存中..." : "保存"}
                 onPress={() => void handleSave()}
                 style={styles.saveButton}
                 textStyle={styles.saveButtonText}
-                disabled={isSaving}
+                disabled={isSaving || isTesting}
                 disabledStyle={styles.saveButtonDisabled}
               />
             </View>
@@ -910,6 +991,23 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "700",
     color: "#fff",
+  },
+  testButton: {
+    flex: 1,
+    minHeight: 48,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#e78842",
+    backgroundColor: "#fff7ef",
+  },
+  testButtonDisabled: {
+    borderColor: "#f3b081",
+    backgroundColor: "#fdf5ed",
+  },
+  testButtonText: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#e78842",
   },
   saveButton: {
     flex: 1,
