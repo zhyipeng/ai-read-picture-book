@@ -5,13 +5,14 @@ import { router } from "expo-router";
 import { type ReactNode, useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+
+import { showAlert } from "@/lib/alert";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { Dialog } from "@/components/Dialog";
@@ -211,7 +212,7 @@ export default function SettingsScreen() {
         }
       } catch (error) {
         if (!cancelled) {
-          Alert.alert(
+          showAlert(
             "加载失败",
             error instanceof Error ? error.message : "设置数据暂时无法读取。"
           );
@@ -250,7 +251,7 @@ export default function SettingsScreen() {
         settings: nextSettings,
       });
     } catch (error) {
-      Alert.alert(
+      showAlert(
         "保存失败",
         error instanceof Error ? error.message : "设置暂时无法保存。"
       );
@@ -289,7 +290,7 @@ export default function SettingsScreen() {
       await refreshSnapshot();
       setShowClearDialog(false);
     } catch (error) {
-      Alert.alert(
+      showAlert(
         "清理失败",
         error instanceof Error ? error.message : "本地音频缓存暂时无法清理。"
       );

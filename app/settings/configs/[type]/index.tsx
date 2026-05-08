@@ -4,13 +4,14 @@ import { router, Stack, useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+
+import { showAlert } from "@/lib/alert";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { ActionButton } from "@/components/ActionButton";
@@ -118,7 +119,7 @@ export default function ConfigListScreen() {
         }
       } catch (error) {
         if (!cancelled) {
-          Alert.alert(
+          showAlert(
             "加载失败",
             error instanceof Error ? error.message : "配置列表暂时无法读取。"
           );
@@ -170,7 +171,7 @@ export default function ConfigListScreen() {
       setState({ configs, settings });
       setDeletingConfig(null);
     } catch (error) {
-      Alert.alert(
+      showAlert(
         "删除失败",
         error instanceof Error ? error.message : "配置暂时无法删除。"
       );

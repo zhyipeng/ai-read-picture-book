@@ -4,7 +4,6 @@ import { Link, router } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -12,6 +11,8 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
+
+import { showAlert } from "@/lib/alert";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { ActionButton } from "@/components/ActionButton";
@@ -427,7 +428,7 @@ export default function Index() {
       setPendingDeleteBook(null);
     } catch (error) {
       console.error("Failed to delete book", error);
-      Alert.alert("删除失败", "绘本删除未完成，请稍后重试。");
+      showAlert("删除失败", "绘本删除未完成，请稍后重试。");
     } finally {
       setDeletingBookId(null);
     }

@@ -4,13 +4,14 @@ import { router, Stack, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+
+import { showAlert } from "@/lib/alert";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { ActionButton } from "@/components/ActionButton";
@@ -480,7 +481,7 @@ export default function BookDetailScreen() {
   const coverVariant = pages.length % 4 === 0 ? "tree" : "moon";
 
   function showPendingAction(message: string) {
-    Alert.alert("功能待接入", message);
+    showAlert("功能待接入", message);
   }
 
   async function handleGenerateBookText() {
@@ -497,13 +498,13 @@ export default function BookDetailScreen() {
       });
 
       setRefreshKey((value) => value + 1);
-      Alert.alert(
+      showAlert(
         "生成完成",
         `已通过 ${getGenerationProviderName()} provider 为 ${result.generatedCount} 页生成文本。`
       );
     } catch (error) {
       console.error("Failed to generate book text", error);
-      Alert.alert("生成失败", "整本文本生成未完成，请稍后重试。");
+      showAlert("生成失败", "整本文本生成未完成，请稍后重试。");
     } finally {
       setIsGeneratingBookText(false);
     }
@@ -523,7 +524,7 @@ export default function BookDetailScreen() {
       });
 
       setRefreshKey((value) => value + 1);
-      Alert.alert(
+      showAlert(
         "生成完成",
         result.skippedCount > 0
           ? `已通过 ${getGenerationProviderName()} provider 为 ${result.generatedCount} 页生成语音，跳过 ${result.skippedCount} 页未生成文本的页面。`
@@ -531,7 +532,7 @@ export default function BookDetailScreen() {
       );
     } catch (error) {
       console.error("Failed to generate book audio", error);
-      Alert.alert("生成失败", "整本语音生成未完成，请稍后重试。");
+      showAlert("生成失败", "整本语音生成未完成，请稍后重试。");
     } finally {
       setIsGeneratingBookAudio(false);
     }
@@ -579,7 +580,7 @@ export default function BookDetailScreen() {
       router.replace("/");
     } catch (error) {
       console.error("Failed to delete book", error);
-      Alert.alert("删除失败", "绘本删除未完成，请稍后重试。");
+      showAlert("删除失败", "绘本删除未完成，请稍后重试。");
     } finally {
       setIsDeleting(false);
     }

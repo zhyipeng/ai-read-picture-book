@@ -4,13 +4,14 @@ import { router, Stack, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+
+import { showAlert } from "@/lib/alert";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { AppHeaderSpacer } from "@/components/AppHeader";
@@ -439,7 +440,7 @@ export default function BookPageDetailScreen() {
   }, [bookId, pageId, isFocused, refreshKey]);
 
   function showPendingAction(title: string, message: string) {
-    Alert.alert(title, message);
+    showAlert(title, message);
   }
 
   if (isLoading) {
@@ -539,13 +540,13 @@ export default function BookPageDetailScreen() {
       });
       setRefreshKey((value) => value + 1);
       setActiveTab("read");
-      Alert.alert(
+      showAlert(
         "生成完成",
         `已通过 ${getGenerationProviderName()} provider 生成当前页文本。`
       );
     } catch (error) {
       console.error("Failed to generate page text", error);
-      Alert.alert("生成失败", "单页文本生成未完成，请稍后重试。");
+      showAlert("生成失败", "单页文本生成未完成，请稍后重试。");
     } finally {
       setIsGeneratingText(false);
     }
@@ -563,13 +564,13 @@ export default function BookPageDetailScreen() {
         page,
       });
       setRefreshKey((value) => value + 1);
-      Alert.alert(
+      showAlert(
         "生成完成",
         `已通过 ${getGenerationProviderName()} provider 生成当前页语音。`
       );
     } catch (error) {
       console.error("Failed to generate page audio", error);
-      Alert.alert("生成失败", "单页语音生成未完成，请稍后重试。");
+      showAlert("生成失败", "单页语音生成未完成，请稍后重试。");
     } finally {
       setIsGeneratingAudio(false);
     }

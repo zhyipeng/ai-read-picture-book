@@ -4,7 +4,6 @@ import { router, Stack, useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -14,6 +13,8 @@ import {
   TextInput,
   View,
 } from "react-native";
+
+import { showAlert } from "@/lib/alert";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { ActionButton } from "@/components/ActionButton";
@@ -182,7 +183,7 @@ export default function ConfigEditorScreen() {
         }
       } catch (error) {
         if (!cancelled) {
-          Alert.alert(
+          showAlert(
             "加载失败",
             error instanceof Error ? error.message : "配置内容暂时无法读取。"
           );
@@ -255,7 +256,7 @@ export default function ConfigEditorScreen() {
 
   async function handleFetchModels() {
     if (!baseUrl.trim() || !apiKeyRef.trim()) {
-      Alert.alert("提示", "请先填写 Base URL 和 API Key。");
+      showAlert("提示", "请先填写 Base URL 和 API Key。");
       return;
     }
 
@@ -280,14 +281,14 @@ export default function ConfigEditorScreen() {
         data?.data?.map((item) => item.id).filter((id): id is string => Boolean(id)) ?? [];
 
       if (models.length === 0) {
-        Alert.alert("提示", "未找到可用模型。");
+        showAlert("提示", "未找到可用模型。");
         return;
       }
 
       setFetchedModels(models);
       setShowModelSheet(true);
     } catch (error) {
-      Alert.alert(
+      showAlert(
         "获取失败",
         error instanceof Error ? error.message : "无法获取模型列表。"
       );
@@ -336,7 +337,7 @@ export default function ConfigEditorScreen() {
       router.back();
     } catch (error) {
         console.error(error)
-      Alert.alert(
+      showAlert(
         "保存失败",
         error instanceof Error ? error.message : "配置暂时无法保存。"
       );
@@ -358,7 +359,7 @@ export default function ConfigEditorScreen() {
       setShowDeleteDialog(false);
       router.back();
     } catch (error) {
-      Alert.alert(
+      showAlert(
         "删除失败",
         error instanceof Error ? error.message : "配置暂时无法删除。"
       );

@@ -4,7 +4,6 @@ import { router } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   PanResponder,
   Platform,
@@ -15,6 +14,8 @@ import {
   TextInput,
   View,
 } from "react-native";
+
+import { showAlert } from "@/lib/alert";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { ActionButton } from "@/components/ActionButton";
@@ -430,7 +431,7 @@ export function BookEditorScreen({
       return true;
     }
 
-    Alert.alert("需要相册权限", "请允许访问相册后再导入绘本封面或页面图片。");
+    showAlert("需要相册权限", "请允许访问相册后再导入绘本封面或页面图片。");
     return false;
   }
 
@@ -460,7 +461,7 @@ export function BookEditorScreen({
       setCoverImage(mapPickedAsset(result.assets[0]));
     } catch (error) {
       console.error("Failed to pick cover image", error);
-      Alert.alert("导入失败", "绘本封面导入未完成，请稍后重试。");
+      showAlert("导入失败", "绘本封面导入未完成，请稍后重试。");
     } finally {
       setIsPickingCoverImage(false);
     }
@@ -498,7 +499,7 @@ export function BookEditorScreen({
       ]);
     } catch (error) {
       console.error("Failed to pick images", error);
-      Alert.alert("导入失败", "页面图片导入未完成，请稍后重试。");
+      showAlert("导入失败", "页面图片导入未完成，请稍后重试。");
     } finally {
       setIsPickingImages(false);
     }
@@ -606,7 +607,7 @@ export function BookEditorScreen({
         ]);
       }
 
-      Alert.alert("保存失败", "绘本保存未完成，请稍后重试。");
+      showAlert("保存失败", "绘本保存未完成，请稍后重试。");
     } finally {
       setIsSaving(false);
     }
@@ -614,7 +615,7 @@ export function BookEditorScreen({
 
   async function handleUpdateBook() {
     if (!originalBook || !bookId) {
-      Alert.alert("无法保存", "绘本信息缺失，请返回后重试。");
+      showAlert("无法保存", "绘本信息缺失，请返回后重试。");
       return;
     }
 
@@ -750,7 +751,7 @@ export function BookEditorScreen({
       router.replace(`/books/${originalBook.id}`);
     } catch (error) {
       console.error("Failed to update book", error);
-      Alert.alert("保存失败", "绘本更新未完成，请稍后重试。");
+      showAlert("保存失败", "绘本更新未完成，请稍后重试。");
     } finally {
       setIsSaving(false);
     }
