@@ -21,6 +21,7 @@ import {
   formatConfigSummary,
   getConfigTypeShortTitle,
   getConfigTypeTitle,
+  getModelProviderLabel,
   isModelConfigType,
 } from "@/lib/settings/configs";
 import type { ModelConfig } from "@/types/config";
@@ -263,6 +264,12 @@ export default function ConfigListScreen() {
                     </Pressable>
                   </View>
 
+                  <View style={styles.metaRow}>
+                    <Text style={styles.metaLabel}>供应商</Text>
+                    <Text numberOfLines={1} style={styles.metaValue}>
+                      {getModelProviderLabel(config.provider)}
+                    </Text>
+                  </View>
                   <View style={styles.metaRow}>
                     <Text style={styles.metaLabel}>Base URL</Text>
                     <Text numberOfLines={1} style={styles.metaValue}>

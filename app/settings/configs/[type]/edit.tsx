@@ -10,7 +10,6 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   View,
@@ -29,13 +28,16 @@ import {
 import { getAppSettings, updateAppSettings } from "@/lib/db/settings";
 import {
   formatPlaybackSpeed,
+  getAdvancedParamsText,
   getConfigTypeShortTitle,
-  getVisionAdvancedParamsText,
-  getVisionOpenAiCompatible,
+  getModelProviderDescription,
+  getModelProviderLabel,
   isModelConfigType,
+  MODEL_PROVIDER_OPTIONS,
   PLAYBACK_SPEED_OPTIONS,
 } from "@/lib/settings/configs";
 import type { CreateModelConfigInput, ModelConfig } from "@/types/config";
+import type { ModelConfigProvider } from "@/types/common";
 import type { AppSettings } from "@/types/settings";
 
 type FieldErrors = {
@@ -71,18 +73,10 @@ async function clearDeletedConfigFromSettings(config: ModelConfig, settings: App
   }
 }
 
-function buildExtraParamsString(params: {
-  type: "vision" | "tts";
-  rawText: string;
-  openAiCompatible: boolean;
-}): string | null {
+function buildExtraParamsString(params: { rawText: string }): string | null {
   const trimmed = params.rawText.trim();
 
   if (!trimmed) {
-    if (params.type === "vision") {
-      return JSON.stringify({ openaiCompatible: params.openAiCompatible });
-    }
-
     return null;
   }
 
@@ -98,15 +92,7 @@ function buildExtraParamsString(params: {
     throw new Error("高级参数必须是 JSON 对象。");
   }
 
-  const nextObject = {
-    ...(parsed as Record<string, unknown>),
-  };
-
-  if (params.type === "vision") {
-    nextObject.openaiCompatible = params.openAiCompatible;
-  }
-
-  return JSON.stringify(nextObject);
+  return JSON.stringify(parsed);
 }
 
 export default function ConfigEditorScreen() {
@@ -129,15 +115,19 @@ export default function ConfigEditorScreen() {
   const [showApiKey, setShowApiKey] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showSpeedSheet, setShowSpeedSheet] = useState(false);
+  const [showProviderSheet, setShowProviderSheet] = useState(false);
   const [errors, setErrors] = useState<FieldErrors>({});
+  const [fetchedModels, setFetchedModels] = useState<string[]>([]);
+  const [isFetchingModels, setIsFetchingModels] = useState(false);
+  const [showModelSheet, setShowModelSheet] = useState(false);
 
+  const [provider, setProvider] = useState<ModelConfigProvider>("openai-compatible");
   const [name, setName] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
   const [apiKeyRef, setApiKeyRef] = useState("");
   const [model, setModel] = useState("");
   const [voice, setVoice] = useState("");
   const [speed, setSpeed] = useState(1);
-  const [openAiCompatible, setOpenAiCompatible] = useState(true);
   const [extraParamsText, setExtraParamsText] = useState("");
 
   useEffect(() => {
@@ -168,26 +158,22 @@ export default function ConfigEditorScreen() {
           setCurrentConfig(config);
 
           if (config) {
+            setProvider(config.provider);
             setName(config.name);
             setBaseUrl(config.baseUrl);
             setApiKeyRef(config.apiKeyRef);
             setModel(config.model);
             setVoice(config.voice ?? "");
             setSpeed(config.speed ?? 1);
-            setOpenAiCompatible(getVisionOpenAiCompatible(config.extraParams));
-            setExtraParamsText(
-              config.type === "vision"
-                ? getVisionAdvancedParamsText(config.extraParams)
-                : config.extraParams ?? ""
-            );
+            setExtraParamsText(getAdvancedParamsText(config.extraParams));
           } else {
+            setProvider("openai-compatible");
             setName("");
             setBaseUrl("");
             setApiKeyRef("");
             setModel("");
             setVoice("");
             setSpeed(1);
-            setOpenAiCompatible(true);
             setExtraParamsText("");
           }
         }
@@ -264,6 +250,49 @@ export default function ConfigEditorScreen() {
     return Object.keys(nextErrors).length === 0;
   }
 
+  async function handleFetchModels() {
+    if (!baseUrl.trim() || !apiKeyRef.trim()) {
+      Alert.alert("提示", "请先填写 Base URL 和 API Key。");
+      return;
+    }
+
+    setIsFetchingModels(true);
+
+    try {
+      const url = baseUrl.replace(/\/$/, "") + "/models";
+      const response = await fetch(url, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${apiKeyRef.trim()}`,
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const data = (await response.json()) as { data?: { id: string }[] };
+      const models =
+        data?.data?.map((item) => item.id).filter((id): id is string => Boolean(id)) ?? [];
+
+      if (models.length === 0) {
+        Alert.alert("提示", "未找到可用模型。");
+        return;
+      }
+
+      setFetchedModels(models);
+      setShowModelSheet(true);
+    } catch (error) {
+      Alert.alert(
+        "获取失败",
+        error instanceof Error ? error.message : "无法获取模型列表。"
+      );
+    } finally {
+      setIsFetchingModels(false);
+    }
+  }
+
   async function handleSave() {
     if (isSaving || !validateFields()) {
       return;
@@ -274,6 +303,7 @@ export default function ConfigEditorScreen() {
     try {
       const createPayload: CreateModelConfigInput = {
         type: resolvedType,
+        provider,
         name: name.trim(),
         baseUrl: baseUrl.trim(),
         apiKeyRef: apiKeyRef.trim(),
@@ -281,14 +311,13 @@ export default function ConfigEditorScreen() {
         voice: resolvedType === "tts" ? voice.trim() : null,
         speed: resolvedType === "tts" ? speed : null,
         extraParams: buildExtraParamsString({
-          type: resolvedType,
           rawText: extraParamsText,
-          openAiCompatible,
         }),
       };
 
       if (configId) {
         await updateModelConfig(configId, {
+          provider: createPayload.provider,
           name: createPayload.name,
           baseUrl: createPayload.baseUrl,
           apiKeyRef: createPayload.apiKeyRef,
@@ -303,6 +332,7 @@ export default function ConfigEditorScreen() {
 
       router.back();
     } catch (error) {
+        console.error(error)
       Alert.alert(
         "保存失败",
         error instanceof Error ? error.message : "配置暂时无法保存。"
@@ -342,6 +372,12 @@ export default function ConfigEditorScreen() {
     return <Text style={styles.errorText}>{message}</Text>;
   }
 
+  const providerOptions = MODEL_PROVIDER_OPTIONS[resolvedType];
+  const baseUrlPlaceholder =
+    provider === "xiaomi-mimo"
+      ? "https://api.xiaomimimo.com/v1"
+      : "http://127.0.0.1:8000/v1";
+
   return (
     <SafeAreaView style={styles.safeArea} edges={["left", "right", "bottom"]}>
       <Stack.Screen options={{ title: pageTitle }} />
@@ -362,6 +398,22 @@ export default function ConfigEditorScreen() {
             showsVerticalScrollIndicator={false}
           >
             <View style={styles.formCard}>
+              <View style={styles.fieldBlock}>
+                <Text style={styles.label}>模型供应商</Text>
+                <Pressable
+                  style={styles.selectorInput}
+                  onPress={() => setShowProviderSheet(true)}
+                >
+                  <View style={styles.selectorTextWrap}>
+                    <Text style={styles.selectorValue}>{getModelProviderLabel(provider)}</Text>
+                    <Text style={styles.helperText}>
+                      {getModelProviderDescription(resolvedType, provider)}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-down" size={18} color="#b39e8b" />
+                </Pressable>
+              </View>
+
               <View style={styles.fieldBlock}>
                 <Text style={styles.label}>
                   配置名称 <Text style={styles.requiredMark}>*</Text>
@@ -390,7 +442,7 @@ export default function ConfigEditorScreen() {
                     setBaseUrl(value);
                     setErrors((current) => ({ ...current, baseUrl: undefined }));
                   }}
-                  placeholder="http://127.0.0.1:8000/v1"
+                  placeholder={baseUrlPlaceholder}
                   placeholderTextColor="#bea998"
                   style={[styles.input, errors.baseUrl ? styles.inputError : null]}
                   autoCapitalize="none"
@@ -432,43 +484,68 @@ export default function ConfigEditorScreen() {
                 {renderErrorText(errors.apiKeyRef)}
               </View>
 
+              {provider === "xiaomi-mimo" && (
+                <View style={styles.fieldBlock}>
+                  <Pressable
+                    style={[
+                      styles.fetchModelsButton,
+                      isFetchingModels ? styles.fetchModelsButtonDisabled : null,
+                    ]}
+                    onPress={() => void handleFetchModels()}
+                    disabled={isFetchingModels}
+                  >
+                    {isFetchingModels ? (
+                      <ActivityIndicator size="small" color="#ef7b39" />
+                    ) : (
+                      <Ionicons name="cloud-download-outline" size={18} color="#ef7b39" />
+                    )}
+                    <Text style={styles.fetchModelsButtonText}>
+                      {isFetchingModels ? "正在拉取..." : "拉取模型列表"}
+                    </Text>
+                  </Pressable>
+                  {fetchedModels.length > 0 && (
+                    <Text style={styles.helperText}>
+                      已获取 {fetchedModels.length} 个模型，点击下方 Model 字段选择
+                    </Text>
+                  )}
+                </View>
+              )}
+
               <View style={styles.fieldBlock}>
                 <Text style={styles.label}>
                   Model <Text style={styles.requiredMark}>*</Text>
                 </Text>
-                <TextInput
-                  value={model}
-                  onChangeText={(value) => {
-                    setModel(value);
-                    setErrors((current) => ({ ...current, model: undefined }));
-                  }}
-                  placeholder={type === "vision" ? "qwen-vl-max" : "cosyvoice-2"}
-                  placeholderTextColor="#bea998"
-                  style={[styles.input, errors.model ? styles.inputError : null]}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
+                {fetchedModels.length > 0 ? (
+                  <Pressable
+                    style={styles.selectorInput}
+                    onPress={() => setShowModelSheet(true)}
+                  >
+                    <View style={styles.selectorTextWrap}>
+                      <Text style={styles.selectorValue}>
+                        {model || (type === "vision" ? "qwen-vl-max" : "cosyvoice-2")}
+                      </Text>
+                      <Text style={styles.helperText}>点击选择模型</Text>
+                    </View>
+                    <Ionicons name="chevron-down" size={18} color="#b39e8b" />
+                  </Pressable>
+                ) : (
+                  <TextInput
+                    value={model}
+                    onChangeText={(value) => {
+                      setModel(value);
+                      setErrors((current) => ({ ...current, model: undefined }));
+                    }}
+                    placeholder={type === "vision" ? "qwen-vl-max" : "cosyvoice-2"}
+                    placeholderTextColor="#bea998"
+                    style={[styles.input, errors.model ? styles.inputError : null]}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
+                )}
                 {renderErrorText(errors.model)}
               </View>
 
-              {type === "vision" ? (
-                <View style={styles.fieldBlock}>
-                  <View style={styles.switchRow}>
-                    <View style={styles.switchTextWrap}>
-                      <Text style={styles.label}>是否 OpenAI 兼容</Text>
-                      <Text style={styles.helperText}>
-                        开启后按 OpenAI 风格接口组织请求参数。
-                      </Text>
-                    </View>
-                    <Switch
-                      value={openAiCompatible}
-                      onValueChange={setOpenAiCompatible}
-                      trackColor={{ false: "#dec9b3", true: "#8acb8d" }}
-                      thumbColor="#fff"
-                    />
-                  </View>
-                </View>
-              ) : (
+              {type === "tts" && (
                 <>
                   <View style={styles.fieldBlock}>
                     <Text style={styles.label}>
@@ -518,11 +595,7 @@ export default function ConfigEditorScreen() {
                   multiline
                   textAlignVertical="top"
                 />
-                <Text style={styles.helperText}>
-                  {type === "vision"
-                    ? "这里填写除 openaiCompatible 之外的附加参数。"
-                    : "可填写供应商扩展参数。"}
-                </Text>
+                <Text style={styles.helperText}>可填写供应商扩展参数。</Text>
                 {renderErrorText(errors.extraParams)}
               </View>
             </View>
@@ -555,6 +628,43 @@ export default function ConfigEditorScreen() {
           </ScrollView>
         </KeyboardAvoidingView>
       )}
+
+      <OptionSheet
+        visible={showProviderSheet}
+        title="选择模型供应商"
+        options={providerOptions.map((item) => ({
+          key: item.value,
+          label: item.label,
+          description: item.description,
+          selected: item.value === provider,
+        }))}
+        onClose={() => setShowProviderSheet(false)}
+        onSelect={(key) => {
+          const nextProvider = key as ModelConfigProvider;
+          setProvider(nextProvider);
+          if (nextProvider === "xiaomi-mimo" && !baseUrl.trim()) {
+            setBaseUrl("https://api.xiaomimimo.com/v1");
+          }
+          setFetchedModels([]);
+          setShowProviderSheet(false);
+        }}
+      />
+
+      <OptionSheet
+        visible={showModelSheet}
+        title="选择模型"
+        options={fetchedModels.map((modelId) => ({
+          key: modelId,
+          label: modelId,
+          selected: modelId === model,
+        }))}
+        onClose={() => setShowModelSheet(false)}
+        onSelect={(key) => {
+          setModel(key);
+          setErrors((current) => ({ ...current, model: undefined }));
+          setShowModelSheet(false);
+        }}
+      />
 
       <OptionSheet
         visible={showSpeedSheet}
@@ -672,6 +782,27 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  fetchModelsButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    minHeight: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#ef7b39",
+    backgroundColor: "#fff7ef",
+    paddingHorizontal: 14,
+  },
+  fetchModelsButtonDisabled: {
+    borderColor: "#f3b081",
+    backgroundColor: "#fdf5ed",
+  },
+  fetchModelsButtonText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#ef7b39",
+  },
   inputError: {
     borderColor: "#d85d43",
   },
@@ -689,32 +820,22 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "#d85d43",
   },
-  switchRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "#f0e3d5",
-    backgroundColor: "#fff8ef",
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-  },
-  switchTextWrap: {
-    flex: 1,
-    gap: 4,
-  },
   selectorInput: {
     minHeight: 48,
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     justifyContent: "space-between",
+    gap: 12,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: "#e7ddcf",
     backgroundColor: "#fff",
     paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  selectorTextWrap: {
+    flex: 1,
+    gap: 4,
   },
   selectorValue: {
     fontSize: 15,

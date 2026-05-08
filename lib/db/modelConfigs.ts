@@ -20,6 +20,7 @@ export async function createModelConfig(
     `INSERT INTO model_configs (
       id,
       type,
+      provider,
       name,
       baseUrl,
       apiKeyRef,
@@ -29,9 +30,10 @@ export async function createModelConfig(
       extraParams,
       createdAt,
       updatedAt
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     id,
     input.type,
+    input.provider,
     input.name,
     input.baseUrl,
     input.apiKeyRef,
@@ -90,6 +92,9 @@ export async function updateModelConfig(
 
   if (input.name !== undefined) {
     updates.push(["name", input.name]);
+  }
+  if (input.provider !== undefined) {
+    updates.push(["provider", input.provider]);
   }
   if (input.baseUrl !== undefined) {
     updates.push(["baseUrl", input.baseUrl]);

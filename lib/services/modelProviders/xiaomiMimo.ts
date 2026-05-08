@@ -1,0 +1,91 @@
+import type { ModelProvider } from "./types";
+import { assertObjectRecord, buildBearerHeaders, getExtraParams, joinUrl } from "./utils";
+
+export const xiaomiMimoModelProvider: ModelProvider = {
+  id: "xiaomi-mimo",
+  label: "Xiaomi MIMO",
+  buildVisionRequest({ config, prompt, systemPrompt, maxTokens, temperature }) {
+    return {
+      url: joinUrl(config.baseUrl, "/chat/completions"),
+      method: "POST",
+      headers: buildBearerHeaders(config.apiKeyRef),
+      body: JSON.stringify({
+        model: config.model,
+        messages: [
+          ...(systemPrompt?.trim()
+            ? [
+                {
+                  role: "system",
+                  content: systemPrompt.trim(),
+                },
+              ]
+            : []),
+          {
+            role: "user",
+            content: prompt.map((part) =>
+              part.type === "text"
+                ? {
+                    type: "text",
+                    text: part.text,
+                  }
+                : {
+                    type: "image_url",
+                    image_url: {
+                      url: part.imageUrl,
+                    },
+                  }
+            ),
+          },
+        ],
+        max_tokens: maxTokens,
+        temperature,
+        ...getExtraParams(config.extraParams),
+      }),
+    };
+  },
+  parseVisionResponse(response) {
+    const payload = assertObjectRecord(response, "Xiaomi MIMO 响应格式无效。");
+    const choices = payload.choices;
+
+    if (!Array.isArray(choices) || choices.length === 0) {
+      throw new Error("Xiaomi MIMO 响应缺少 choices。");
+    }
+
+    const firstChoice = assertObjectRecord(choices[0], "Xiaomi MIMO choice 无效。");
+    const message = assertObjectRecord(firstChoice.message, "Xiaomi MIMO message 无效。");
+
+    if (typeof message.content !== "string" || !message.content.trim()) {
+      throw new Error("Xiaomi MIMO 响应缺少文本内容。");
+    }
+
+    return {
+      content: message.content,
+    };
+  },
+  buildTtsRequest({ config, text, voice, speed, responseFormat }) {
+    return {
+      url: joinUrl(config.baseUrl, "/audio/speech"),
+      method: "POST",
+      headers: buildBearerHeaders(config.apiKeyRef),
+      body: JSON.stringify({
+        model: config.model,
+        input: text,
+        voice: voice ?? config.voice ?? undefined,
+        speed: speed ?? config.speed ?? undefined,
+        response_format: responseFormat ?? "mp3",
+        ...getExtraParams(config.extraParams),
+      }),
+    };
+  },
+  parseTtsResponse(response) {
+    const payload = assertObjectRecord(response, "Xiaomi MIMO TTS 响应格式无效。");
+
+    if (typeof payload.audio !== "string" || !payload.audio.trim()) {
+      throw new Error("Xiaomi MIMO TTS 响应缺少音频内容。");
+    }
+
+    return {
+      audioBase64: payload.audio,
+    };
+  },
+};

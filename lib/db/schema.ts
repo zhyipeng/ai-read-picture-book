@@ -48,6 +48,7 @@ export const SCHEMA_STATEMENTS = [
   `CREATE TABLE IF NOT EXISTS model_configs (
     id TEXT PRIMARY KEY NOT NULL,
     type TEXT NOT NULL CHECK(type IN ('vision', 'tts')),
+    provider TEXT NOT NULL DEFAULT 'openai-compatible',
     name TEXT NOT NULL,
     baseUrl TEXT NOT NULL,
     apiKeyRef TEXT NOT NULL,

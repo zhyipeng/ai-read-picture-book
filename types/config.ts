@@ -1,8 +1,9 @@
-import type { ModelConfigType } from "@/types/common";
+import type { ModelConfigProvider, ModelConfigType } from "@/types/common";
 
 export type ModelConfig = {
   id: string;
   type: ModelConfigType;
+  provider: ModelConfigProvider;
   name: string;
   baseUrl: string;
   apiKeyRef: string;
@@ -16,6 +17,7 @@ export type ModelConfig = {
 
 export type CreateModelConfigInput = {
   type: ModelConfigType;
+  provider: ModelConfigProvider;
   name: string;
   baseUrl: string;
   apiKeyRef: string;

@@ -36,6 +36,21 @@ async function ensureBooksTableColumns(
   }
 }
 
+async function ensureModelConfigsTableColumns(
+  database: SQLite.SQLiteDatabase
+): Promise<void> {
+  const columns = await database.getAllAsync<SqliteTableInfoRow>(
+    "PRAGMA table_info(model_configs)"
+  );
+  const columnNames = new Set(columns.map((column) => column.name));
+
+  if (!columnNames.has("provider")) {
+    await database.execAsync(
+      "ALTER TABLE model_configs ADD COLUMN provider TEXT NOT NULL DEFAULT 'openai-compatible';"
+    );
+  }
+}
+
 export async function initDatabase(): Promise<SQLite.SQLiteDatabase> {
   if (!initializationPromise) {
     initializationPromise = (async () => {
@@ -48,6 +63,7 @@ export async function initDatabase(): Promise<SQLite.SQLiteDatabase> {
       }
 
       await ensureBooksTableColumns(database);
+      await ensureModelConfigsTableColumns(database);
 
       await database.runAsync(
         `INSERT OR IGNORE INTO app_settings (

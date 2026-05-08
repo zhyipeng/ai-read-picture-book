@@ -24,6 +24,7 @@ import {
   formatConfigSummary,
   formatPlaybackSpeed,
   getConfigTypeTitle,
+  getModelProviderLabel,
   PLAYBACK_SPEED_OPTIONS,
 } from "@/lib/settings/configs";
 import { deleteFileIfExists } from "@/lib/storage/files";
@@ -98,14 +99,18 @@ async function getSettingsSnapshot(): Promise<SettingsSnapshot> {
   };
 }
 
-function getConfigNameById(configs: ModelConfig[], configId: string | null): string {
+function getConfigDisplayName(configs: ModelConfig[], configId: string | null): string {
   if (!configId) {
     return "未设置";
   }
 
   const config = configs.find((item) => item.id === configId);
 
-  return config ? config.name : "配置已删除";
+  if (!config) {
+    return "配置已删除";
+  }
+
+  return `${config.name} · ${getModelProviderLabel(config.provider)}`;
 }
 
 function formatBytes(size: number): string {
@@ -353,7 +358,7 @@ export default function SettingsScreen() {
         <SettingsSection title="默认配置">
           <SettingsRow
             label="中文默认多模态模型"
-            value={getConfigNameById(visionConfigs, settings.defaultZhVisionConfigId)}
+            value={getConfigDisplayName(visionConfigs, settings.defaultZhVisionConfigId)}
             onPress={() =>
               setSelectorState({
                 kind: "default-config",
@@ -366,7 +371,7 @@ export default function SettingsScreen() {
           />
           <SettingsRow
             label="英文默认多模态模型"
-            value={getConfigNameById(visionConfigs, settings.defaultEnVisionConfigId)}
+            value={getConfigDisplayName(visionConfigs, settings.defaultEnVisionConfigId)}
             onPress={() =>
               setSelectorState({
                 kind: "default-config",
@@ -379,7 +384,7 @@ export default function SettingsScreen() {
           />
           <SettingsRow
             label="中文默认 TTS 模型"
-            value={getConfigNameById(ttsConfigs, settings.defaultZhTtsConfigId)}
+            value={getConfigDisplayName(ttsConfigs, settings.defaultZhTtsConfigId)}
             onPress={() =>
               setSelectorState({
                 kind: "default-config",
@@ -392,7 +397,7 @@ export default function SettingsScreen() {
           />
           <SettingsRow
             label="英文默认 TTS 模型"
-            value={getConfigNameById(ttsConfigs, settings.defaultEnTtsConfigId)}
+            value={getConfigDisplayName(ttsConfigs, settings.defaultEnTtsConfigId)}
             onPress={() =>
               setSelectorState({
                 kind: "default-config",
