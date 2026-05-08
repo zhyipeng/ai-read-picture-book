@@ -8,7 +8,6 @@ import {
   Pressable,
   SafeAreaView,
   StyleSheet,
-  Text,
   useWindowDimensions,
   View,
 } from "react-native";

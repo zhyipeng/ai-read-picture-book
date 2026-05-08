@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { AppHeaderIconButton, AppHeaderSpacer } from "@/components/AppHeader";
+import { AppHeaderSpacer } from "@/components/AppHeader";
 import { PreviewImage } from "@/components/PreviewImage";
 import { getBookById } from "@/lib/db/books";
 import { getModelConfigById } from "@/lib/db/modelConfigs";
