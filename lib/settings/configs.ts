@@ -100,6 +100,29 @@ export function parseExtraParamsObject(
   }
 }
 
+export const MIMO_VOICE_OPTIONS = [
+  { voiceId: "mimo_default", name: "MiMo-默认", language: "自动", gender: "" },
+  { voiceId: "冰糖", name: "冰糖", language: "中文", gender: "女性" },
+  { voiceId: "茉莉", name: "茉莉", language: "中文", gender: "女性" },
+  { voiceId: "苏打", name: "苏打", language: "中文", gender: "男性" },
+  { voiceId: "白桦", name: "白桦", language: "中文", gender: "男性" },
+  { voiceId: "Mia", name: "Mia", language: "英文", gender: "女性" },
+  { voiceId: "Chloe", name: "Chloe", language: "英文", gender: "女性" },
+  { voiceId: "Milo", name: "Milo", language: "英文", gender: "男性" },
+  { voiceId: "Dean", name: "Dean", language: "英文", gender: "男性" },
+];
+
+export function getMimoVoiceLabel(voice: {
+  name: string;
+  language: string;
+  gender: string;
+}): string {
+  if (!voice.gender) {
+    return voice.name;
+  }
+  return `${voice.name}-${voice.language}-${voice.gender}`;
+}
+
 export function getAdvancedParamsText(extraParams: string | null): string {
   const parsed = parseExtraParamsObject(extraParams);
 

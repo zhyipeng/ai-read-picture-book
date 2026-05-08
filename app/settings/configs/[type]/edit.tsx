@@ -30,9 +30,11 @@ import {
   formatPlaybackSpeed,
   getAdvancedParamsText,
   getConfigTypeShortTitle,
+  getMimoVoiceLabel,
   getModelProviderDescription,
   getModelProviderLabel,
   isModelConfigType,
+  MIMO_VOICE_OPTIONS,
   MODEL_PROVIDER_OPTIONS,
   PLAYBACK_SPEED_OPTIONS,
 } from "@/lib/settings/configs";
@@ -120,6 +122,7 @@ export default function ConfigEditorScreen() {
   const [fetchedModels, setFetchedModels] = useState<string[]>([]);
   const [isFetchingModels, setIsFetchingModels] = useState(false);
   const [showModelSheet, setShowModelSheet] = useState(false);
+  const [showVoiceSheet, setShowVoiceSheet] = useState(false);
 
   const [provider, setProvider] = useState<ModelConfigProvider>("openai-compatible");
   const [name, setName] = useState("");
@@ -551,16 +554,38 @@ export default function ConfigEditorScreen() {
                     <Text style={styles.label}>
                       Voice <Text style={styles.requiredMark}>*</Text>
                     </Text>
-                    <TextInput
-                      value={voice}
-                      onChangeText={(value) => {
-                        setVoice(value);
-                        setErrors((current) => ({ ...current, voice: undefined }));
-                      }}
-                      placeholder="例如：女声-温馨"
-                      placeholderTextColor="#bea998"
-                      style={[styles.input, errors.voice ? styles.inputError : null]}
-                    />
+                    {provider === "xiaomi-mimo" ? (
+                      <Pressable
+                        style={styles.selectorInput}
+                        onPress={() => setShowVoiceSheet(true)}
+                      >
+                        <View style={styles.selectorTextWrap}>
+                          <Text style={styles.selectorValue}>
+                            {voice
+                              ? (() => {
+                                  const v = MIMO_VOICE_OPTIONS.find(
+                                    (item) => item.voiceId === voice
+                                  );
+                                  return v ? getMimoVoiceLabel(v) : voice;
+                                })()
+                              : "请选择音色"}
+                          </Text>
+                          <Text style={styles.helperText}>点击选择 MiMo 音色</Text>
+                        </View>
+                        <Ionicons name="chevron-down" size={18} color="#b39e8b" />
+                      </Pressable>
+                    ) : (
+                      <TextInput
+                        value={voice}
+                        onChangeText={(value) => {
+                          setVoice(value);
+                          setErrors((current) => ({ ...current, voice: undefined }));
+                        }}
+                        placeholder="例如：女声-温馨"
+                        placeholderTextColor="#bea998"
+                        style={[styles.input, errors.voice ? styles.inputError : null]}
+                      />
+                    )}
                     {renderErrorText(errors.voice)}
                   </View>
 
@@ -663,6 +688,22 @@ export default function ConfigEditorScreen() {
           setModel(key);
           setErrors((current) => ({ ...current, model: undefined }));
           setShowModelSheet(false);
+        }}
+      />
+
+      <OptionSheet
+        visible={showVoiceSheet}
+        title="选择音色"
+        options={MIMO_VOICE_OPTIONS.map((item) => ({
+          key: item.voiceId,
+          label: getMimoVoiceLabel(item),
+          selected: item.voiceId === voice,
+        }))}
+        onClose={() => setShowVoiceSheet(false)}
+        onSelect={(key) => {
+          setVoice(key);
+          setErrors((current) => ({ ...current, voice: undefined }));
+          setShowVoiceSheet(false);
         }}
       />
 
