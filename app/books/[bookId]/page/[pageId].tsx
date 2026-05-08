@@ -593,14 +593,6 @@ export default function BookPageDetailScreen() {
       <Stack.Screen
         options={{
           title: `第 ${pageNumber} 页 / 共 ${totalPageCount} 页`,
-          headerRight: () => (
-            <AppHeaderIconButton
-              iconName="ellipsis-horizontal"
-              onPress={() =>
-                showPendingAction("更多操作", "页面级更多操作稍后接入。")
-              }
-            />
-          ),
         }}
       />
 

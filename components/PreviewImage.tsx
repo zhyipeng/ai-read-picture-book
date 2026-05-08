@@ -237,7 +237,6 @@ export function PreviewImage({
       >
         <SafeAreaView style={styles.modalRoot}>
           <View style={styles.modalHeader}>
-            <Text style={styles.modalHint}>双击还原，双指缩放，拖拽查看</Text>
             <Pressable style={styles.closeButton} onPress={handleClose}>
               <Ionicons name="close" size={22} color="#FFFFFF" />
             </Pressable>
