@@ -30,7 +30,7 @@ export type GenerateBookAudioResult = {
   skippedCount: number;
 };
 
-export type GenerationProviderName = "fake";
+export type GenerationProviderName = "fake" | "real";
 
 export type GenerationProvider = {
   name: GenerationProviderName;

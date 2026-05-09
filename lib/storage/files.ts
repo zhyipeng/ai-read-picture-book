@@ -17,6 +17,13 @@ import {
   isWebImageUri,
   saveWebImage,
 } from "@/lib/storage/web-images";
+import {
+  deleteWebAudioByBookId,
+  deleteWebAudioByPath,
+  getWebAudioObjectUrl,
+  isWebAudioUri,
+  saveWebAudio,
+} from "@/lib/storage/web-audio";
 
 async function ensureDirectoryExists(directory: string): Promise<void> {
   const info = await FileSystem.getInfoAsync(directory);
@@ -99,6 +106,22 @@ export async function getPersistedImageUri(imagePath: string): Promise<{
   };
 }
 
+export async function getPersistedAudioUri(audioPath: string): Promise<{
+  uri: string;
+  revoke?: () => void;
+}> {
+  if (!isWebAudioUri(audioPath)) {
+    return { uri: audioPath };
+  }
+
+  const objectUrl = await getWebAudioObjectUrl(audioPath);
+
+  return {
+    uri: objectUrl,
+    revoke: () => URL.revokeObjectURL(objectUrl),
+  };
+}
+
 export async function writeAudioToPage(params: {
   bookId: string;
   pageId: string;
@@ -106,6 +129,13 @@ export async function writeAudioToPage(params: {
   extension?: string;
 }): Promise<string> {
   const { bookId, pageId, base64Audio, extension } = params;
+
+  if (Platform.OS === "web") {
+    const mimeType = extension
+      ? `audio/${extension.replace(/^\./, "")}`
+      : undefined;
+    return saveWebAudio({ bookId, pageId, base64Audio, mimeType });
+  }
 
   await ensureBookDirectories(bookId);
 
@@ -128,6 +158,11 @@ export async function deleteFileIfExists(filePath: string): Promise<void> {
     return;
   }
 
+  if (isWebAudioUri(filePath)) {
+    await deleteWebAudioByPath(filePath);
+    return;
+  }
+
   const info = await FileSystem.getInfoAsync(filePath);
 
   if (!info.exists) {
@@ -140,6 +175,7 @@ export async function deleteFileIfExists(filePath: string): Promise<void> {
 export async function deleteBookDirectory(bookId: string): Promise<void> {
   if (Platform.OS === "web") {
     await deleteWebImagesByBookId(bookId);
+    await deleteWebAudioByBookId(bookId);
     return;
   }
 

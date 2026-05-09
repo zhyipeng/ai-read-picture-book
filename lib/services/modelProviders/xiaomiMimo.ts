@@ -85,13 +85,22 @@ export const xiaomiMimoModelProvider: ModelProvider = {
   },
   parseTtsResponse(response) {
     const payload = assertObjectRecord(response, "Xiaomi MIMO TTS 响应格式无效。");
+    const choices = payload.choices;
 
-    if (typeof payload.audio !== "string" || !payload.audio.trim()) {
-      throw new Error("Xiaomi MIMO TTS 响应缺少音频内容。");
+    if (!Array.isArray(choices) || choices.length === 0) {
+      throw new Error("Xiaomi MIMO TTS 响应缺少 choices。");
+    }
+
+    const firstChoice = assertObjectRecord(choices[0], "Xiaomi MIMO TTS choice 无效。");
+    const message = assertObjectRecord(firstChoice.message, "Xiaomi MIMO TTS message 无效。");
+    const audio = assertObjectRecord(message.audio, "Xiaomi MIMO TTS audio 无效。");
+
+    if (typeof audio.data !== "string" || !audio.data.trim()) {
+      throw new Error("Xiaomi MIMO TTS 响应缺少音频数据。");
     }
 
     return {
-      audioBase64: payload.audio,
+      audioBase64: audio.data,
     };
   },
 };

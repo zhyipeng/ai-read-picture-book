@@ -6,6 +6,7 @@ import {
 } from "@/lib/services/fakeGeneration";
 import { resolveEffectiveModelConfig } from "@/lib/services/modelConfigs";
 
+import { generationProviderReal } from "./real";
 import type {
   GenerateBookAudioParams,
   GenerateBookAudioResult,
@@ -25,9 +26,10 @@ const generationProviders: Record<GenerationProviderName, GenerationProvider> = 
     generateBookText: generateBookTextFake,
     generateBookAudio: generateBookAudioFake,
   },
+  real: generationProviderReal,
 };
 
-const activeGenerationProviderName: GenerationProviderName = "fake";
+const activeGenerationProviderName: GenerationProviderName = "real";
 
 function getActiveGenerationProvider(): GenerationProvider {
   return generationProviders[activeGenerationProviderName];

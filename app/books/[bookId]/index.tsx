@@ -500,11 +500,11 @@ export default function BookDetailScreen() {
       setRefreshKey((value) => value + 1);
       showAlert(
         "生成完成",
-        `已通过 ${getGenerationProviderName()} provider 为 ${result.generatedCount} 页生成文本。`
+        `已为 ${result.generatedCount} 页生成文本。`
       );
     } catch (error) {
       console.error("Failed to generate book text", error);
-      showAlert("生成失败", "整本文本生成未完成，请稍后重试。");
+      showAlert("生成失败", String(error));
     } finally {
       setIsGeneratingBookText(false);
     }
@@ -527,12 +527,12 @@ export default function BookDetailScreen() {
       showAlert(
         "生成完成",
         result.skippedCount > 0
-          ? `已通过 ${getGenerationProviderName()} provider 为 ${result.generatedCount} 页生成语音，跳过 ${result.skippedCount} 页未生成文本的页面。`
-          : `已通过 ${getGenerationProviderName()} provider 为 ${result.generatedCount} 页生成语音。`
+          ? `已为 ${result.generatedCount} 页生成语音，跳过 ${result.skippedCount} 页未生成文本的页面。`
+          : `已为 ${result.generatedCount} 页生成语音。`
       );
     } catch (error) {
       console.error("Failed to generate book audio", error);
-      showAlert("生成失败", "整本语音生成未完成，请稍后重试。");
+      showAlert("生成失败", `整本语音生成未完成，请稍后重试。${error}`);
     } finally {
       setIsGeneratingBookAudio(false);
     }

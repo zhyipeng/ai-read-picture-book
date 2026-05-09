@@ -542,11 +542,11 @@ export default function BookPageDetailScreen() {
       setActiveTab("read");
       showAlert(
         "生成完成",
-        `已通过 ${getGenerationProviderName()} provider 生成当前页文本。`
+        `已生成当前页文本。`
       );
     } catch (error) {
       console.error("Failed to generate page text", error);
-      showAlert("生成失败", "单页文本生成未完成，请稍后重试。");
+      showAlert("生成失败", String(error));
     } finally {
       setIsGeneratingText(false);
     }
