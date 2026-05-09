@@ -25,6 +25,8 @@ import {
   getGenerationProviderName,
 } from "@/lib/services/generation";
 import { getAppSettings } from "@/lib/db/settings";
+import { useAudioPlayer } from "@/lib/services/audioPlayer";
+import { formatPlaybackSpeed } from "@/lib/settings/configs";
 import { getPersistedImageUri } from "@/lib/storage/files";
 import type { Book } from "@/types/book";
 import type { ModelConfig } from "@/types/config";
@@ -64,12 +66,6 @@ function formatDateTime(value: string): string {
   const minute = `${date.getMinutes()}`.padStart(2, "0");
 
   return `${year}-${month}-${day} ${hour}:${minute}`;
-}
-
-function formatSpeed(value: number | null | undefined): string {
-  const speed = value ?? 1;
-
-  return `${speed.toFixed(1)}x`;
 }
 
 function getPreferredTab(page: Page): DetailTabKey {
@@ -344,6 +340,8 @@ export default function BookPageDetailScreen() {
   const [isGeneratingText, setIsGeneratingText] = useState(false);
   const [isGeneratingAudio, setIsGeneratingAudio] = useState(false);
 
+  const { state: playbackState, speed: playbackSpeed, load, togglePlay, cycleSpeed, setOnEnd, setSpeed, unload } = useAudioPlayer();
+
   function cleanupImageUri() {
     imageRevokeRef.current?.();
     imageRevokeRef.current = null;
@@ -439,9 +437,31 @@ export default function BookPageDetailScreen() {
     };
   }, [bookId, pageId, isFocused, refreshKey]);
 
-  function showPendingAction(title: string, message: string) {
-    showAlert(title, message);
-  }
+  useEffect(() => {
+    if (state?.page.audioPath && state.page.audioStatus === "done") {
+      void load(state.page.audioPath);
+    }
+  }, [state?.page.id, state?.page.audioPath]);
+
+  useEffect(() => {
+    if (!state) return;
+    const { book, page, pages, settings } = state;
+    const idx = pages.findIndex((item) => item.id === page.id);
+    const np = idx >= 0 && idx < pages.length - 1 ? pages[idx + 1] : null;
+
+    setOnEnd(() => {
+      if (np) {
+        const delayMs = (settings.pauseBetweenPages ?? 0.5) * 1000;
+        setTimeout(() => {
+          router.replace(`/books/${book.id}/page/${np.id}`);
+        }, delayMs);
+      }
+    });
+  }, [state]);
+
+  useEffect(() => {
+    setSpeed(playbackSpeed);
+  }, [playbackSpeed]);
 
   if (isLoading) {
     return (
@@ -508,7 +528,7 @@ export default function BookPageDetailScreen() {
       : activeTab === "scene"
         ? page.sceneDescription.trim() || "暂无画面描述"
         : page.readAloudText.trim() || "暂无朗读文本";
-  const speedLabel = formatSpeed(ttsConfig?.speed ?? settings.playbackSpeed);
+  const speedLabel = formatPlaybackSpeed(playbackSpeed);
   const ttsConfigLabel = ttsConfig
     ? `${ttsConfig.name}${ttsConfig.voice ? ` · ${ttsConfig.voice}` : ""} · ${speedLabel}`
     : `未配置 · ${speedLabel}`;
@@ -661,17 +681,21 @@ export default function BookPageDetailScreen() {
               style={({ pressed }) => [
                 styles.playCircleButton,
                 pressed ? styles.pressed : null,
+                !page.audioPath || page.audioStatus !== "done"
+                  ? styles.disabled
+                  : null,
               ]}
-              onPress={() =>
-                showPendingAction(
-                  "播放功能待接入",
-                  page.audioPath
-                    ? "单页播放逻辑尚未接入。"
-                    : "当前页还没有可播放的音频。"
-                )
-              }
+              onPress={() => {
+                if (!page.audioPath || page.audioStatus !== "done") return;
+                void togglePlay();
+              }}
+              disabled={!page.audioPath || page.audioStatus !== "done"}
             >
-              <Ionicons name="play" size={24} color="#FFFFFF" />
+              <Ionicons
+                name={playbackState === "playing" ? "pause" : "play"}
+                size={24}
+                color="#FFFFFF"
+              />
             </Pressable>
           </View>
 
@@ -760,17 +784,21 @@ export default function BookPageDetailScreen() {
               style={({ pressed }) => [
                 styles.playerPlayButton,
                 pressed ? styles.pressed : null,
+                !page.audioPath || page.audioStatus !== "done"
+                  ? styles.disabled
+                  : null,
               ]}
-              onPress={() =>
-                showPendingAction(
-                  "播放功能待接入",
-                  page.audioPath
-                    ? "底部播放器逻辑尚未接入。"
-                    : "当前页还没有可播放的音频。"
-                )
-              }
+              onPress={() => {
+                if (!page.audioPath || page.audioStatus !== "done") return;
+                void togglePlay();
+              }}
+              disabled={!page.audioPath || page.audioStatus !== "done"}
             >
-              <Ionicons name="play" size={18} color="#FFFFFF" />
+              <Ionicons
+                name={playbackState === "playing" ? "pause" : "play"}
+                size={18}
+                color="#FFFFFF"
+              />
             </Pressable>
             <Pressable
               style={({ pressed }) => [
@@ -788,9 +816,9 @@ export default function BookPageDetailScreen() {
                 styles.speedChip,
                 pressed ? styles.pressed : null,
               ]}
-              onPress={() =>
-                showPendingAction("倍速设置", "播放倍速设置入口稍后接入。")
-              }
+              onPress={() => {
+                void cycleSpeed(playbackSpeed);
+              }}
             >
               <Text style={styles.speedChipText}>{speedLabel}</Text>
             </Pressable>
