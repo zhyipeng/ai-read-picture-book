@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useIsFocused } from "@react-navigation/native";
 import { router, Stack, useLocalSearchParams } from "expo-router";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -25,6 +25,8 @@ import {
   generateBookText,
   getGenerationProviderName,
 } from "@/lib/services/generation";
+import { useAudioPlayer } from "@/lib/services/audioPlayer";
+import { formatPlaybackSpeed } from "@/lib/settings/configs";
 import {
   deleteBookDirectory,
   getPersistedImageUri,
@@ -348,6 +350,10 @@ export default function BookDetailScreen() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [isGeneratingBookText, setIsGeneratingBookText] = useState(false);
   const [isGeneratingBookAudio, setIsGeneratingBookAudio] = useState(false);
+  const [playingIndex, setPlayingIndex] = useState(-1);
+  const shouldAutoPlayRef = useRef(false);
+
+  const { state: playbackState, speed: playbackSpeed, load, togglePlay, cycleSpeed, setOnEnd, setSpeed } = useAudioPlayer();
 
   function cleanupResolvedImages() {
     revokeHandlersRef.current.forEach((revoke) => revoke());
@@ -480,8 +486,60 @@ export default function BookDetailScreen() {
   const languageLabel = book ? getLanguageLabel(book.language) : "--";
   const coverVariant = pages.length % 4 === 0 ? "tree" : "moon";
 
-  function showPendingAction(message: string) {
-    showAlert("功能待接入", message);
+  const playablePages = useMemo(
+    () => pages.filter((p) => p.audioStatus === "done" && Boolean(p.audioPath)),
+    [pages]
+  );
+
+  useEffect(() => {
+    const page = playablePages[playingIndex];
+    if (page) {
+      void load(page.audioPath!, () => {
+        shouldAutoPlayRef.current = true;
+      }).catch(() => {
+        shouldAutoPlayRef.current = false;
+      });
+    }
+  }, [playingIndex, playablePages]);
+
+  useEffect(() => {
+    if (playbackState === "ready" && shouldAutoPlayRef.current) {
+      shouldAutoPlayRef.current = false;
+      void togglePlay();
+    }
+  }, [playbackState]);
+
+  useEffect(() => {
+    setOnEnd(() => {
+      const nextIndex = playingIndex + 1;
+      if (nextIndex < playablePages.length) {
+        setPlayingIndex(nextIndex);
+      } else {
+        setPlayingIndex(-1);
+      }
+    });
+  }, [playingIndex, playablePages.length]);
+
+  useEffect(() => {
+    setSpeed(playbackSpeed);
+  }, [playbackSpeed]);
+
+  function startPlayback() {
+    if (playablePages.length === 0) return;
+    const idx = playablePages.findIndex((p) => p.id === currentPage?.id);
+    setPlayingIndex(idx >= 0 ? idx : 0);
+  }
+
+  function playPrev() {
+    if (playingIndex > 0) {
+      setPlayingIndex(playingIndex - 1);
+    }
+  }
+
+  function playNext() {
+    if (playingIndex < playablePages.length - 1) {
+      setPlayingIndex(playingIndex + 1);
+    }
   }
 
   async function handleGenerateBookText() {
@@ -722,21 +780,31 @@ export default function BookDetailScreen() {
               }}
             />
             <DetailActionCard
-              iconName="play"
+              iconName={playbackState === "playing" ? "pause-circle" : "play"}
               iconColor="#E28B38"
               iconBackgroundColor="#FFF0E1"
               borderColor="#F2D2B0"
               backgroundColor="#FFF9F2"
-              title="连续播放"
-              subtitle="（仅播放已有音频的页面）"
-              disabled={audioReadyCount === 0}
-              onPress={() =>
-                showPendingAction(
-                  audioReadyCount > 0
-                    ? "连续播放逻辑尚未接入。"
-                    : "当前还没有可连续播放的音频页面。"
-                )
+              title={
+                playbackState === "playing"
+                  ? "暂停播放"
+                  : playingIndex >= 0
+                    ? "继续播放"
+                    : "连续播放"
               }
+              subtitle={
+                playingIndex >= 0
+                  ? `正在第 ${(playablePages[playingIndex]?.pageIndex ?? -1) + 1} 页`
+                  : "（仅播放已有音频的页面）"
+              }
+              disabled={audioReadyCount === 0}
+              onPress={() => {
+                if (playingIndex < 0) {
+                  startPlayback();
+                } else {
+                  void togglePlay();
+                }
+              }}
             />
           </View>
 
@@ -893,43 +961,69 @@ export default function BookDetailScreen() {
                 {book.title}
               </Text>
               <Text numberOfLines={1} style={styles.playerSubtitle}>
-                {pageCount > 0
-                  ? `第 ${currentReadingPage} / ${pageCount} 页`
-                  : "暂无可播放页面"}
+                {playbackState === "playing" && playingIndex >= 0
+                  ? `正在播放第 ${(playablePages[playingIndex]?.pageIndex ?? -1) + 1} 页`
+                  : pageCount > 0
+                    ? `第 ${currentReadingPage} / ${pageCount} 页`
+                    : "暂无可播放页面"}
               </Text>
             </View>
           </View>
 
           <View style={styles.playerControls}>
             <Pressable
-              style={styles.playerIconButton}
-              onPress={() => showPendingAction("上一页播放控制尚未接入。")}
+              style={[
+                styles.playerIconButton,
+                playingIndex <= 0 ? styles.disabled : null,
+              ]}
+              onPress={playPrev}
+              disabled={playingIndex <= 0}
             >
               <Ionicons name="play-skip-back" size={20} color="#3B312A" />
             </Pressable>
             <Pressable
-              style={styles.playerPlayButton}
-              onPress={() =>
-                showPendingAction(
-                  audioReadyCount > 0
-                    ? "底部播放器逻辑尚未接入。"
-                    : "当前还没有可播放的音频页面。"
-                )
-              }
+              style={[
+                styles.playerPlayButton,
+                audioReadyCount === 0 ? styles.disabled : null,
+              ]}
+              onPress={() => {
+                if (playingIndex < 0) {
+                  startPlayback();
+                } else {
+                  void togglePlay();
+                }
+              }}
+              disabled={audioReadyCount === 0}
             >
-              <Ionicons name="play" size={18} color="#FFFFFF" />
+              <Ionicons
+                name={playbackState === "playing" ? "pause" : "play"}
+                size={18}
+                color="#FFFFFF"
+              />
             </Pressable>
             <Pressable
-              style={styles.playerIconButton}
-              onPress={() => showPendingAction("下一页播放控制尚未接入。")}
+              style={[
+                styles.playerIconButton,
+                playingIndex >= playablePages.length - 1 || playablePages.length === 0
+                  ? styles.disabled
+                  : null,
+              ]}
+              onPress={playNext}
+              disabled={
+                playingIndex >= playablePages.length - 1 || playablePages.length === 0
+              }
             >
               <Ionicons name="play-skip-forward" size={20} color="#3B312A" />
             </Pressable>
             <Pressable
               style={styles.speedChip}
-              onPress={() => showPendingAction("倍速播放设置尚未接入。")}
+              onPress={() => {
+                void cycleSpeed(playbackSpeed);
+              }}
             >
-              <Text style={styles.speedChipText}>1.25x</Text>
+              <Text style={styles.speedChipText}>
+                {formatPlaybackSpeed(playbackSpeed)}
+              </Text>
             </Pressable>
           </View>
         </View>
@@ -1539,5 +1633,8 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     textAlign: "center",
     color: "#56483D",
+  },
+  disabled: {
+    opacity: 0.42,
   },
 });

@@ -30,7 +30,7 @@ export function useAudioPlayer() {
     };
   }, []);
 
-  const load = useCallback(async (audioPath: string) => {
+  const load = useCallback(async (audioPath: string, onLoaded?: () => void) => {
     if (isMockPath(audioPath)) return;
 
     revokeRef.current?.();
@@ -59,6 +59,7 @@ export function useAudioPlayer() {
 
       soundRef.current = sound;
       setLoadedPath(audioPath);
+      onLoaded?.();
       setState("ready");
     } catch (error) {
       console.error("Failed to load audio", error);
