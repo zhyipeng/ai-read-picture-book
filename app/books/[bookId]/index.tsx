@@ -11,7 +11,7 @@ import {
   View,
 } from "react-native";
 
-import { showAlert } from "@/lib/alert";
+import { showAlert, showConfirm } from "@/lib/alert";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { ActionButton } from "@/components/ActionButton";
@@ -518,6 +518,14 @@ export default function BookDetailScreen() {
       return;
     }
 
+    if (generatedPageCount > 0) {
+      const confirmed = await showConfirm(
+        "重新生成文本",
+        `已有 ${generatedPageCount} 页生成了文本，重新生成将覆盖已有内容，是否继续？`
+      );
+      if (!confirmed) return;
+    }
+
     try {
       setIsGeneratingBookText(true);
 
@@ -542,6 +550,14 @@ export default function BookDetailScreen() {
   async function handleGenerateBookAudio() {
     if (!book || pages.length === 0 || isGeneratingBookAudio) {
       return;
+    }
+
+    if (audioReadyCount > 0) {
+      const confirmed = await showConfirm(
+        "重新生成语音",
+        `已有 ${audioReadyCount} 页生成了语音，重新生成将覆盖已有内容，是否继续？`
+      );
+      if (!confirmed) return;
     }
 
     try {

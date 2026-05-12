@@ -11,7 +11,7 @@ import {
   View,
 } from "react-native";
 
-import { showAlert } from "@/lib/alert";
+import { showAlert, showConfirm } from "@/lib/alert";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { AppHeaderSpacer } from "@/components/AppHeader";
@@ -615,6 +615,14 @@ export default function BookPageDetailScreen() {
       return;
     }
 
+    if (hasGeneratedText(page) || page.textStatus === "done") {
+      const confirmed = await showConfirm(
+        "重新生成文本",
+        "当前页已有生成过的文本，重新生成将覆盖已有内容，是否继续？"
+      );
+      if (!confirmed) return;
+    }
+
     try {
       setIsGeneratingText(true);
       await generatePageText({
@@ -638,6 +646,14 @@ export default function BookPageDetailScreen() {
   async function handleGenerateAudio() {
     if (isGeneratingAudio) {
       return;
+    }
+
+    if (page.audioStatus === "done" && page.audioPath) {
+      const confirmed = await showConfirm(
+        "重新生成语音",
+        "当前页已有生成过的语音，重新生成将覆盖已有内容，是否继续？"
+      );
+      if (!confirmed) return;
     }
 
     try {
