@@ -18,6 +18,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { ActionButton } from "@/components/ActionButton";
 import { Dialog } from "@/components/Dialog";
 import { PreviewImage } from "@/components/PreviewImage";
+import { usePlayer } from "@/lib/services/PlayerContext";
 import { deleteBook, listBooks } from "@/lib/db/books";
 import {
   deleteBookDirectory,
@@ -291,6 +292,7 @@ function EmptyStateCard() {
 
 export default function Index() {
   const isFocused = useIsFocused();
+  const { togglePlay, registerPlayerBarActions } = usePlayer();
   const [books, setBooks] = useState<BookCardItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorText, setErrorText] = useState<string | null>(null);
@@ -300,6 +302,14 @@ export default function Index() {
     null
   );
   const [reloadKey, setReloadKey] = useState(0);
+
+  useEffect(() => {
+    if (isFocused) {
+      registerPlayerBarActions({
+        onPlayPause: () => { void togglePlay(); },
+      });
+    }
+  }, [isFocused]);
 
   useEffect(() => {
     if (!isFocused) {
@@ -508,6 +518,7 @@ export default function Index() {
           confirmDisabled={pendingDeleteBook === null || deletingBookId !== null}
           cancelDisabled={deletingBookId !== null}
         />
+
       </View>
     </SafeAreaView>
   );
@@ -972,5 +983,15 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "700",
     color: "#fff",
+  },
+  playerThumb: {
+    width: "100%",
+    height: "100%",
+  },
+  playerFallbackThumb: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#F0ECE6",
   },
 });

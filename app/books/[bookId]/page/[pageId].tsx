@@ -25,7 +25,7 @@ import {
   getGenerationProviderName,
 } from "@/lib/services/generation";
 import { getAppSettings } from "@/lib/db/settings";
-import { useAudioPlayer } from "@/lib/services/audioPlayer";
+import { usePlayer } from "@/lib/services/PlayerContext";
 import { formatPlaybackSpeed } from "@/lib/settings/configs";
 import { getPersistedImageUri } from "@/lib/storage/files";
 import type { Book } from "@/types/book";
@@ -340,7 +340,7 @@ export default function BookPageDetailScreen() {
   const [isGeneratingText, setIsGeneratingText] = useState(false);
   const [isGeneratingAudio, setIsGeneratingAudio] = useState(false);
 
-  const { state: playbackState, speed: playbackSpeed, load, togglePlay, cycleSpeed, setOnEnd, setSpeed, unload } = useAudioPlayer();
+  const { playbackState, speed: playbackSpeed, currentTrack, load, play, togglePlay, cycleSpeed, setOnEnd, setCurrentTrack, markAutoPlayNext, consumeAutoPlayNext, registerPlayerBarActions, clearPlaylist } = usePlayer();
 
   function cleanupImageUri() {
     imageRevokeRef.current?.();
@@ -438,30 +438,93 @@ export default function BookPageDetailScreen() {
   }, [bookId, pageId, isFocused, refreshKey]);
 
   useEffect(() => {
-    if (state?.page.audioPath && state.page.audioStatus === "done") {
-      void load(state.page.audioPath);
+    if (!state?.page.audioPath || state.page.audioStatus !== "done") return;
+
+    if (consumeAutoPlayNext()) {
+      setCurrentTrack({
+        bookId: state.book.id,
+        pageId: state.page.id,
+        bookTitle: state.book.title,
+        pageIndex: state.page.pageIndex,
+        totalPages: Math.max(state.book.pageCount, state.pages.length),
+        imageUri: state.imageUri,
+      });
+      void load(state.page.audioPath, () => {
+        void play();
+      });
+      return;
     }
+
+    if (playbackState === "playing") return;
+
+    setCurrentTrack({
+      bookId: state.book.id,
+      pageId: state.page.id,
+      bookTitle: state.book.title,
+      pageIndex: state.page.pageIndex,
+      totalPages: Math.max(state.book.pageCount, state.pages.length),
+      imageUri: state.imageUri,
+    });
+    void load(state.page.audioPath);
   }, [state?.page.id, state?.page.audioPath]);
 
   useEffect(() => {
-    if (!state) return;
+    if (!state || !isFocused) return;
     const { book, page, pages, settings } = state;
     const idx = pages.findIndex((item) => item.id === page.id);
     const np = idx >= 0 && idx < pages.length - 1 ? pages[idx + 1] : null;
 
+    if (currentTrack?.pageId !== page.id) {
+      return;
+    }
+
     setOnEnd(() => {
       if (np) {
+        markAutoPlayNext();
         const delayMs = (settings.pauseBetweenPages ?? 0.5) * 1000;
         setTimeout(() => {
           router.replace(`/books/${book.id}/page/${np.id}`);
         }, delayMs);
       }
     });
-  }, [state]);
+    return () => setOnEnd(null);
+  }, [isFocused, state, currentTrack?.pageId]);
 
   useEffect(() => {
-    setSpeed(playbackSpeed);
-  }, [playbackSpeed]);
+    if (!state || !isFocused) return;
+    const { book, page, pages } = state;
+    const idx = pages.findIndex((item) => item.id === page.id);
+    const prevPage = idx > 0 ? pages[idx - 1] : null;
+    const nextPage = idx >= 0 && idx < pages.length - 1 ? pages[idx + 1] : null;
+
+    registerPlayerBarActions({
+      onPrev: prevPage ? () => {
+        router.replace(`/books/${book.id}/page/${prevPage.id}`);
+      } : undefined,
+      onPlayPause: () => {
+        if (!page.audioPath || page.audioStatus !== "done") return;
+        if (currentTrack?.pageId !== page.id) {
+          clearPlaylist();
+          setCurrentTrack({
+            bookId: book.id,
+            pageId: page.id,
+            bookTitle: book.title,
+            pageIndex: page.pageIndex,
+            totalPages: Math.max(book.pageCount, pages.length),
+            imageUri: state.imageUri,
+          });
+          void load(page.audioPath, () => {
+            void play();
+          });
+        } else {
+          void togglePlay();
+        }
+      },
+      onNext: nextPage ? () => {
+        router.replace(`/books/${book.id}/page/${nextPage.id}`);
+      } : undefined,
+    });
+  }, [isFocused, state, currentTrack?.pageId]);
 
   if (isLoading) {
     return (
@@ -687,12 +750,27 @@ export default function BookPageDetailScreen() {
               ]}
               onPress={() => {
                 if (!page.audioPath || page.audioStatus !== "done") return;
-                void togglePlay();
+                if (currentTrack?.pageId !== page.id) {
+                  clearPlaylist();
+                  setCurrentTrack({
+                    bookId: book.id,
+                    pageId: page.id,
+                    bookTitle: book.title,
+                    pageIndex: page.pageIndex,
+                    totalPages: totalPageCount,
+                    imageUri: imageUri,
+                  });
+                  void load(page.audioPath, () => {
+                    void play();
+                  });
+                } else {
+                  void togglePlay();
+                }
               }}
               disabled={!page.audioPath || page.audioStatus !== "done"}
             >
               <Ionicons
-                name={playbackState === "playing" ? "pause" : "play"}
+                name={playbackState === "playing" && currentTrack?.pageId === page.id ? "pause" : "play"}
                 size={24}
                 color="#FFFFFF"
               />
@@ -741,89 +819,6 @@ export default function BookPageDetailScreen() {
             </View>
           ) : null}
         </ScrollView>
-
-        <View style={styles.playerBar}>
-          <View style={styles.playerInfo}>
-            <View style={styles.playerThumbWrap}>
-              {imageUri ? (
-                <PreviewImage
-                  source={{ uri: imageUri }}
-                  style={styles.playerThumb}
-                  contentFit="cover"
-                />
-              ) : (
-                <View style={styles.playerFallbackThumb}>
-                  <Ionicons name="moon" size={18} color="#F7D36E" />
-                </View>
-              )}
-            </View>
-
-            <View style={styles.playerTextWrap}>
-              <Text numberOfLines={1} style={styles.playerTitle}>
-                {book.title}
-              </Text>
-              <Text numberOfLines={1} style={styles.playerSubtitle}>
-                第 {pageNumber} / {totalPageCount} 页
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.playerControls}>
-            <Pressable
-              style={({ pressed }) => [
-                styles.playerIconButton,
-                pressed && prevPage ? styles.pressed : null,
-                !prevPage ? styles.disabled : null,
-              ]}
-              onPress={() => openNeighborPage(prevPage)}
-              disabled={!prevPage}
-            >
-              <Ionicons name="play-skip-back" size={18} color="#3F342E" />
-            </Pressable>
-            <Pressable
-              style={({ pressed }) => [
-                styles.playerPlayButton,
-                pressed ? styles.pressed : null,
-                !page.audioPath || page.audioStatus !== "done"
-                  ? styles.disabled
-                  : null,
-              ]}
-              onPress={() => {
-                if (!page.audioPath || page.audioStatus !== "done") return;
-                void togglePlay();
-              }}
-              disabled={!page.audioPath || page.audioStatus !== "done"}
-            >
-              <Ionicons
-                name={playbackState === "playing" ? "pause" : "play"}
-                size={18}
-                color="#FFFFFF"
-              />
-            </Pressable>
-            <Pressable
-              style={({ pressed }) => [
-                styles.playerIconButton,
-                pressed && nextPage ? styles.pressed : null,
-                !nextPage ? styles.disabled : null,
-              ]}
-              onPress={() => openNeighborPage(nextPage)}
-              disabled={!nextPage}
-            >
-              <Ionicons name="play-skip-forward" size={18} color="#3F342E" />
-            </Pressable>
-            <Pressable
-              style={({ pressed }) => [
-                styles.speedChip,
-                pressed ? styles.pressed : null,
-              ]}
-              onPress={() => {
-                void cycleSpeed(playbackSpeed);
-              }}
-            >
-              <Text style={styles.speedChipText}>{speedLabel}</Text>
-            </Pressable>
-          </View>
-        </View>
       </View>
     </SafeAreaView>
   );
